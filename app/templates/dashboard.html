@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}داشبورد — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>داشبورد</h1>
+<div class="cards">
+  <div class="card"><h3>اتصال به هسته تماس</h3><span id="st-ami" class="badge">در حال بررسی…</span></div>
+  <div class="card"><h3>ترانک پیشگامان</h3><span id="st-trunk" class="badge">در حال بررسی…</span></div>
+  <div class="card"><h3>تلفن‌های آنلاین</h3><span id="st-online" class="big">—</span></div>
+  <div class="card"><h3>تماس‌های فعال</h3><span id="st-active" class="big">—</span></div>
+</div>
+
+<div class="card">
+  <h3>وضعیت ثبت داخلی‌ها</h3>
+  <table>
+    <thead><tr><th>شماره</th><th>نام</th><th>وضعیت</th></tr></thead>
+    <tbody>
+      {% for e in exts %}
+      <tr>
+        <td dir="ltr">{{ e.ext }}</td>
+        <td>{{ e.display_name }}</td>
+        <td><span class="badge st-ext" id="st-{{ e.ext }}">…</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>آخرین تماس‌ها</h3>
+  {% if rows %}
+  <table>
+    <thead><tr><th>مبدأ</th><th>مقصد</th><th>زمان</th><th>مدت</th><th>وضعیت</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td dir="ltr">{{ r.src }}</td><td dir="ltr">{{ r.dst }}</td>
+        <td dir="ltr">{{ r.start }}</td><td dir="ltr">{{ r.billsec }}s</td>
+        <td>{{ r.disposition }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">هنوز تماسی ثبت نشده است.</p>
+  {% endif %}
+  <a class="btn btn-ghost" href="{{ url_for('main.cdr_page') }}">گزارش کامل تماس‌ها →</a>
+</div>
+
+<script>
+async function refresh() {
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) return;
+    const s = await r.json();
+    setBadge('st-ami', s.ami, 'متصل', 'قطع');
+    setBadge('st-trunk', s.trunk_online, 'ثبت‌شده', 'قطع');
+    document.getElementById('st-online').textContent =
+      Object.values(s.online).filter(Boolean).length + ' از ' + Object.keys(s.online).length;
+    document.getElementById('st-active').textContent = String(s.active.length);
+    document.querySelectorAll('.st-ext').forEach(el => {
+      const id = el.id.slice(3);
+      if (id in s.online) setBadge(el.id, s.online[id], 'آنلاین', 'آفلاین');
+    });
+  } catch (e) { /* ignore */ }
+}
+function setBadge(id, ok, on, off) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = ok ? on : off;
+  el.classList.toggle('badge-ok', !!ok);
+  el.classList.toggle('badge-bad', !ok);
+}
+refresh(); setInterval(refresh, 5000);
+</script>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}تنظیمات — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>تنظیمات</h1>
+
+<div class="card">
+  <h3>سانترال</h3>
+  <form method="post" action="{{ url_for('main.settings_page') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="pbx">
+    <div class="grid-2">
+      <div>
+        <label>مقصد تماس‌های ورودی (داخلی)</label>
+        <select name="inbound_dest">
+          <option value="">— انتخاب کنید —</option>
+          {% for e in exts %}
+          <option value="{{ e.ext }}" {{ 'selected' if s.get('inbound_dest') == e.ext else '' }}>
+            {{ e.ext }} — {{ e.display_name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>آی‌پی عمومی سرور (پشت NAT)</label>
+        <input type="text" name="nat_public_ip" dir="ltr" value="{{ s.get('nat_public_ip','') }}">
+      </div>
+      <div>
+        <label>آی‌پی سرور از دید تلفن‌ها</label>
+        <input type="text" name="lan_ip" dir="ltr" value="{{ s.get('lan_ip','') }}">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">ذخیره و اعمال</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>تغییر رمز مدیر</h3>
+  <form method="post" action="{{ url_for('main.settings_page') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="password">
+    <div class="grid-2">
+      <div><label>رمز فعلی</label><input type="password" name="old_password" required></div>
+      <div><label>رمز جدید (حداقل ۸ نویسه)</label><input type="password" name="new_password" minlength="8" required></div>
+      <div><label>تکرار رمز جدید</label><input type="password" name="new_password2" minlength="8" required></div>
+    </div>
+    <button type="submit" class="btn btn-primary">تغییر رمز</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>نگهداری</h3>
+  <form method="post" action="{{ url_for('main.settings_page') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="rebuild">
+    <p class="hint">اگر کانتینر Asterisk را دوباره ساخته‌اید یا مغایرتی دیدید، همه کانفیگ‌ها را از دیتابیس بازسازی و Asterisk را reload کنید.</p>
+    <button type="submit" class="btn btn-secondary">بازسازی کامل کانفیگ‌ها</button>
+  </form>
+</div>
+{% endblock %}

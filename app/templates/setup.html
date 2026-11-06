@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}راه‌اندازی اولیه — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<div class="auth-card">
+  <h1>🚀 راه‌اندازی اولیه</h1>
+  <p class="muted">برای شروع، یک رمز برای مدیر پنل بسازید. این کار فقط بار اول انجام می‌شود.</p>
+  <form method="post" action="{{ url_for('main.setup') }}">
+    <label>رمز مدیر (حداقل ۸ نویسه)</label>
+    <input type="password" name="password" minlength="8" autofocus required>
+    <label>تکرار رمز</label>
+    <input type="password" name="password2" minlength="8" required>
+    <button type="submit" class="btn btn-primary btn-block">ساخت رمز و ادامه</button>
+  </form>
+</div>
+{% endblock %}

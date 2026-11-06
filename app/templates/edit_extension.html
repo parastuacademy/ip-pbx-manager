@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}ویرایش داخلی — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>ویرایش داخلی {{ e.ext }}</h1>
+<div class="card">
+  <form method="post" action="{{ url_for('main.edit_extension', ext=e.ext) }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="grid-2">
+      <div>
+        <label>نام نمایشی</label>
+        <input type="text" name="display_name" value="{{ e.display_name }}">
+      </div>
+      <div>
+        <label>رمز SIP (خالی = بدون تغییر)</label>
+        <input type="text" name="secret" dir="ltr" placeholder="{{ e.secret }}">
+      </div>
+      <div>
+        <label>MAC گوشی گرنداستریم</label>
+        <input type="text" name="mac" dir="ltr" value="{{ e.mac }}" placeholder="AABBCCDDEEFF">
+      </div>
+      <div>
+        <label>مدل گوشی</label>
+        <select name="model">
+          {% for value, label in models %}
+          <option value="{{ value }}" {{ 'selected' if e.model == value else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="full">
+        <label class="check">
+          <input type="checkbox" name="record" {{ 'checked' if e.record else '' }}>
+          ضبط مکالمات این داخلی
+        </label>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">ذخیره و اعمال</button>
+    <a class="btn btn-ghost" href="{{ url_for('main.extensions') }}">بازگشت</a>
+  </form>
+</div>
+{% endblock %}

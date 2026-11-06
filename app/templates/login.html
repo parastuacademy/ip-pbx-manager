@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}ورود — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<div class="auth-card">
+  <h1>🔑 ورود به پنل</h1>
+  <form method="post" action="{{ url_for('main.login') }}">
+    <label>رمز مدیر</label>
+    <input type="password" name="password" autofocus required>
+    <button type="submit" class="btn btn-primary btn-block">ورود</button>
+  </form>
+</div>
+{% endblock %}

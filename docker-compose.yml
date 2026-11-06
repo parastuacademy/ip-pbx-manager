@@ -1,0 +1,38 @@
+# ip-pbx-manager — standard two-container deployment.
+# The image is built once and both services reuse it (different PBX_ROLE).
+
+services:
+  asterisk:
+    build: .
+    image: ip-pbx-manager:latest
+    container_name: ipbx-asterisk
+    environment:
+      PBX_ROLE: asterisk
+      AMI_PASSWORD: ${AMI_PASSWORD:-ipbx-ami-change-me}
+      TZ: Asia/Tehran
+    ports:
+      - "5060:5060/udp"
+      - "10000-10100:10000-10100/udp"
+    volumes:
+      - ipbx-data:/data
+    restart: unless-stopped
+
+  panel:
+    image: ip-pbx-manager:latest
+    container_name: ipbx-panel
+    depends_on:
+      - asterisk
+    environment:
+      PBX_ROLE: panel
+      AMI_HOST: asterisk
+      AMI_PASSWORD: ${AMI_PASSWORD:-ipbx-ami-change-me}
+      PANEL_PORT: 8080
+      TZ: Asia/Tehran
+    ports:
+      - "8080:8080/tcp"
+    volumes:
+      - ipbx-data:/data
+    restart: unless-stopped
+
+volumes:
+  ipbx-data:

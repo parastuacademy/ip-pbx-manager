@@ -1,0 +1,40 @@
+<!doctype html>
+<html dir="rtl" lang="fa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}پنل تلفن آی‌پی{% endblock %}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% if session.get('user') %}
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">📞 پنل تلفن آی‌پی</div>
+    <nav>
+      <a href="{{ url_for('main.dashboard') }}" class="{{ 'active' if request.path == '/' else '' }}">داشبورد</a>
+      <a href="{{ url_for('main.extensions') }}" class="{{ 'active' if request.path.startswith('/extensions') else '' }}">داخلی‌ها</a>
+      <a href="{{ url_for('main.trunk') }}" class="{{ 'active' if request.path.startswith('/trunk') else '' }}">ترانک پیشگامان</a>
+      <a href="{{ url_for('main.cdr_page') }}" class="{{ 'active' if request.path.startswith('/cdr') else '' }}">تماس‌ها</a>
+      <a href="{{ url_for('main.recordings') }}" class="{{ 'active' if request.path.startswith('/recordings') else '' }}">ضبط‌ها</a>
+      <a href="{{ url_for('main.settings_page') }}" class="{{ 'active' if request.path.startswith('/settings') else '' }}">تنظیمات</a>
+    </nav>
+    <form method="post" action="{{ url_for('main.logout') }}" class="logout-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-ghost btn-block">خروج از پنل</button>
+    </form>
+  </aside>
+  <main class="content">
+{% else %}
+<div class="center-page"><main>
+{% endif %}
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}<div class="flashes">
+      {% for cat, m in msgs %}<div class="flash flash-{{ cat }}">{{ m }}</div>{% endfor %}
+    </div>{% endif %}
+  {% endwith %}
+  {% block body %}{% endblock %}
+</main></div>
+</body>
+</html>

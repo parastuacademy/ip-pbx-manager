@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}ترانک پیشگامان — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>ترانک پیشگامان</h1>
+
+<div class="card">
+  <h3>وضعیت اتصال</h3>
+  <p><span id="st-trunk" class="badge">در حال بررسی…</span>
+     <span id="st-ami" class="badge">در حال بررسی…</span></p>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('main.trunk') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="grid-2">
+      <div>
+        <label>حالت اتصال</label>
+        <select name="trunk_mode">
+          <option value="register" {{ 'selected' if s.get('trunk_mode','register')=='register' else '' }}>Register — با نام کاربری و رمز</option>
+          <option value="peer" {{ 'selected' if s.get('trunk_mode')=='peer' else '' }}>IP-Peer — با اجازه‌لیست آی‌پی</option>
+        </select>
+      </div>
+      <div>
+        <label>آدرس سرور پیشگامان</label>
+        <input type="text" name="trunk_host" dir="ltr" value="{{ s.get('trunk_host','') }}" required>
+      </div>
+      <div>
+        <label>پورت SIP</label>
+        <input type="text" name="trunk_port" dir="ltr" value="{{ s.get('trunk_port','5060') }}">
+      </div>
+      <div>
+        <label>نام کاربری SIP (فقط Register)</label>
+        <input type="text" name="trunk_user" dir="ltr" value="{{ s.get('trunk_user','') }}">
+      </div>
+      <div>
+        <label>رمز SIP (فقط Register)</label>
+        <input type="password" name="trunk_pass" dir="ltr" placeholder="{{ '●●●●●●' if s.get('trunk_pass') else '' }}">
+        <p class="hint">خالی بگذارید تا رمز فعلی حفظ شود؟ — خیر: برای تغییر، رمز جدید را وارد کنید.</p>
+      </div>
+      <div class="full">
+        <label>کدک‌ها</label>
+        <div class="checks">
+          {% for c, label in [('ulaw','G.711u'), ('alaw','G.711a'), ('g729','G.729')] %}
+          <label class="check"><input type="checkbox" name="codecs" value="{{ c }}"
+            {{ 'checked' if c in s.get('codecs','ulaw,alaw').split(',') else '' }}> {{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">ذخیره و اعمال</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>راهنما</h3>
+  <ul class="tips">
+    <li>مشخصات دقیق (حالت، سرور، نام کاربری، رمز، کدک) را از مدارک پیشگامان بگیرید.</li>
+    <li>در حالت Peer، آی‌پی سرور شما باید در اجازه‌لیست پیشگامان ثبت شده باشد.</li>
+    <li>اگر تماس برقرار شد ولی صدا یک‌طرفه بود، از تنظیمات «آی‌پی عمومی سرور» را وارد کنید.</li>
+  </ul>
+</div>
+
+<script>
+async function refresh() {
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) return;
+    const s = await r.json();
+    const t = document.getElementById('st-trunk');
+    const a = document.getElementById('st-ami');
+    t.textContent = s.trunk_online ? 'ثبت‌شده ✅' : 'ثبت نشده';
+    t.classList.toggle('badge-ok', !!s.trunk_online);
+    t.classList.toggle('badge-bad', !s.trunk_online);
+    a.textContent = s.ami ? 'هسته تماس: متصل' : 'هسته تماس: قطع';
+    a.classList.toggle('badge-ok', !!s.ami);
+    a.classList.toggle('badge-bad', !s.ami);
+  } catch (e) { /* ignore */ }
+}
+refresh(); setInterval(refresh, 5000);
+</script>
+{% endblock %}

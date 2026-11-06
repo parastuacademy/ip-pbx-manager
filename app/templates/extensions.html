@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}داخلی‌ها — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>داخلی‌ها</h1>
+
+<details class="card" {% if not exts %}open{% endif %}>
+  <summary>➕ افزودن داخلی جدید</summary>
+  <form method="post" action="{{ url_for('main.extensions') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="grid-2">
+      <div>
+        <label>شماره داخلی</label>
+        <input type="text" name="ext" dir="ltr" placeholder="111" required>
+      </div>
+      <div>
+        <label>نام نمایشی</label>
+        <input type="text" name="display_name" placeholder="مدیریت">
+      </div>
+      <div>
+        <label>MAC گوشی گرنداستریم (اختیاری — برای پروویژنینگ)</label>
+        <input type="text" name="mac" dir="ltr" placeholder="AABBCCDDEEFF یا aa:bb:cc:dd:ee:ff">
+      </div>
+      <div>
+        <label>مدل گوشی</label>
+        <select name="model">
+          {% for value, label in models %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">افزودن و اعمال</button>
+  </form>
+</details>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>شماره</th><th>نام</th><th>رمز SIP</th><th>وضعیت</th>
+        <th>ضبط</th><th>MAC</th><th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in exts %}
+      <tr>
+        <td dir="ltr">{{ e.ext }}</td>
+        <td>{{ e.display_name }}</td>
+        <td dir="ltr" class="mono">{{ e.secret }}</td>
+        <td><span class="badge st-ext" id="st-{{ e.ext }}">…</span></td>
+        <td>
+          <form method="post" action="{{ url_for('main.toggle_record', ext=e.ext) }}" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-small {{ 'btn-on' if e.record else 'btn-ghost' }}">
+              {{ 'ضبط روشن' if e.record else 'ضبط خاموش' }}
+            </button>
+          </form>
+        </td>
+        <td dir="ltr" class="mono">{{ e.mac or '—' }}</td>
+        <td class="actions">
+          <a class="btn btn-small btn-ghost" href="{{ url_for('main.edit_extension', ext=e.ext) }}">ویرایش</a>
+          <form method="post" action="{{ url_for('main.delete_extension', ext=e.ext) }}" class="inline"
+                onsubmit="return confirm('داخلی {{ e.ext }} حذف شود؟');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-small btn-danger">حذف</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>📞 پروویژنینگ خودکار تلفن‌های گرنداستریم</h3>
+  <ol>
+    <li>MAC گوشی را در داخلی مربوطه ثبت کنید (افزودن یا ویرایش داخلی).</li>
+    <li>در وب‌رابط گوشی مسیر <b>Maintenance → Upgrade/Provisioning</b> را باز کنید.</li>
+    <li>در فیلد Config Server Path این آدرس را بگذارید:</li>
+  </ol>
+  <div class="copybox"><code dir="ltr" id="prov-url">{{ provisioning_base }}</code>
+    <button type="button" class="btn btn-small btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('prov-url').textContent)">کپی</button>
+  </div>
+  <p class="hint">گوشی پس از ری‌استارت، داخلی و رمز را خودکار دریافت می‌کند. فایل هر گوشی:
+    <code dir="ltr">{{ provisioning_base }}cfg&lt;MAC&gt;.xml</code></p>
+</div>
+
+<script>
+async function refresh() {
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) return;
+    const s = await r.json();
+    document.querySelectorAll('.st-ext').forEach(el => {
+      const id = el.id.slice(3);
+      if (id in s.online) {
+        el.textContent = s.online[id] ? 'آنلاین' : 'آفلاین';
+        el.classList.toggle('badge-ok', !!s.online[id]);
+        el.classList.toggle('badge-bad', !s.online[id]);
+      }
+    });
+  } catch (e) { /* ignore */ }
+}
+refresh(); setInterval(refresh, 5000);
+</script>
+{% endblock %}

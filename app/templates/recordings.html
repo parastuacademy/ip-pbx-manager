@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}ضبط مکالمات — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>ضبط مکالمات</h1>
+
+<div class="card">
+  {% if files %}
+  <table>
+    <thead><tr><th>فایل</th><th>حجم</th><th>تاریخ</th><th>پخش</th><th>دانلود</th></tr></thead>
+    <tbody>
+      {% for f in files %}
+      <tr>
+        <td dir="ltr" class="mono">{{ f.name }}</td>
+        <td dir="ltr">{{ '%.1f'|format(f.size / 1024 / 1024) }} MB</td>
+        <td dir="ltr">{{ f.mtime|datetime_fa }}</td>
+        <td><audio controls preload="none" src="{{ url_for('main.recording_file', name=f.name) }}"></audio></td>
+        <td><a class="btn btn-small btn-ghost" href="{{ url_for('main.recording_file', name=f.name) }}" download>دانلود</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">هنوز ضبطی موجود نیست. برای هر داخلی از صفحه «داخلی‌ها» کلید ضبط را روشن کنید.</p>
+  {% endif %}
+</div>
+{% endblock %}

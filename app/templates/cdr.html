@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}گزارش تماس‌ها — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>گزارش تماس‌ها</h1>
+
+<div class="card">
+  <form method="get" action="{{ url_for('main.cdr_page') }}" class="filterbar">
+    <input type="text" name="q" dir="ltr" placeholder="شماره…" value="{{ q }}">
+    <input type="date" name="date" value="{{ date }}">
+    <button type="submit" class="btn btn-primary">فیلتر</button>
+    <a class="btn btn-ghost" href="{{ url_for('main.cdr_page') }}">همه</a>
+  </form>
+</div>
+
+<div class="card">
+  {% if rows %}
+  <table>
+    <thead>
+      <tr><th>مبدأ</th><th>مقصد</th><th>زمان شروع</th><th>مدت مکالمه</th><th>وضعیت</th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td dir="ltr">{{ r.src or '—' }}</td>
+        <td dir="ltr">{{ r.dst or '—' }}</td>
+        <td dir="ltr">{{ r.start }}</td>
+        <td dir="ltr">{{ r.billsec }} ثانیه</td>
+        <td>{{ {'ANSWERED':'پاسخ داده شد','NO ANSWER':'بدون پاسخ','BUSY':'مشغول',
+                 'FAILED':'ناموفق','CONGESTION':'اشباع شبکه'}.get(r.disposition, r.disposition) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">رکوردی برای این فیلترها پیدا نشد.</p>
+  {% endif %}
+</div>
+{% endblock %}
