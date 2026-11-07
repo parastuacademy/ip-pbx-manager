@@ -185,7 +185,7 @@ ip-pbx-manager/
 ├── entrypoint.sh           # انتخاب نقش کانتینر
 ├── asterisk/               # کانفیگ‌های پایه Asterisk (+ voicemail)
 ├── docs/                   # مستندات (API.md + openapi.yaml)
-├── tests/                  # تست‌های API و وب‌هوک (unittest)
+├── tests/                  # تست‌ها: API، پنل و پروویژنینگ (unittest)
 └── app/                    # پنل مدیریت (Python/Flask + قالب‌های فارسی)
     ├── ipbx/api.py         # REST API نسخه ۱ (/api/v1)
     ├── ipbx/webhooks.py    # موتور ارسال رخدادها با تلاش مجدد
