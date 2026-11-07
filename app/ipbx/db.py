@@ -47,10 +47,75 @@ def init_db():
                    created_at  TEXT DEFAULT (datetime('now','localtime'))
                )"""
         )
-        for key, value in (("admin_hash", ""), ("wizard_done", "0"),
+        # v2 migration: per-extension voicemail flag
+        try:
+            c.execute("ALTER TABLE extensions ADD COLUMN voicemail INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS ring_groups (
+                   id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                   name     TEXT NOT NULL,
+                   members  TEXT NOT NULL DEFAULT '',
+                   timeout  INTEGER NOT NULL DEFAULT 20,
+                   fallback TEXT NOT NULL DEFAULT ''
+               )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS ivr_menus (
+                   id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                   name      TEXT NOT NULL,
+                   prompt    TEXT NOT NULL DEFAULT '',
+                   timeout   INTEGER NOT NULL DEFAULT 6,
+                   options   TEXT NOT NULL DEFAULT '{}',
+                   fallback  TEXT NOT NULL DEFAULT ''
+               )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS holidays (
+                   gdate TEXT PRIMARY KEY,
+                   label TEXT NOT NULL DEFAULT ''
+               )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS security_log (
+                   id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                   ts        TEXT DEFAULT (datetime('now','localtime')),
+                   event     TEXT NOT NULL,
+                   detail    TEXT NOT NULL DEFAULT ''
+               )"""
+        )
+        for key, value in (("admin_hash", ""), ("viewer_hash", ""), ("wizard_done", "0"),
                            ("codecs", "ulaw,alaw"), ("trunk_mode", "register"),
-                           ("trunk_port", "5060")):
+                           ("trunk_port", "5060"),
+                           # business hours (weekly schedule, per weekday 0=Saturday .. 6=Friday)
+                           ("wh_enabled", "0"),
+                           # notifications
+                           ("tg_bot_token", ""), ("tg_chat_id", ""), ("webhook_url", ""),
+                           ("smtp_host", ""), ("smtp_port", "587"), ("smtp_user", ""),
+                           ("smtp_pass", ""), ("smtp_tls", "1"), ("smtp_from", ""),
+                           ("notify_email", ""), ("notify_missed", "1"),
+                           ("notify_trunk", "1"), ("notify_login", "1")):
             c.execute("INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (key, value))
+    _ensure_vm_main_pass()
+
+
+def _ensure_vm_main_pass():
+    """Voicemail mailbox 'main' password, generated once."""
+    if not get_setting("vm_main_pass"):
+        set_setting("vm_main_pass", gen_password(6))
+
+
+# ------------------------------------------------------------- security log
+def log_event(event, detail=""):
+    with _conn() as c:
+        c.execute("INSERT INTO security_log(event, detail) VALUES (?, ?)", (event, detail))
+
+
+def list_security_log(limit=200):
+    with _conn() as c:
+        rows = c.execute("SELECT * FROM security_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return [_row_to_dict(r) for r in rows]
 
 
 # ---------------------------------------------------------------- settings
@@ -109,7 +174,8 @@ def add_extension(ext, display_name, secret, record=0, mac="", model="generic"):
         )
 
 
-def update_extension(ext, display_name=None, secret=None, record=None, mac=None, model=None):
+def update_extension(ext, display_name=None, secret=None, record=None, mac=None, model=None,
+                     voicemail=None):
     fields, vals = [], []
     if display_name is not None:
         fields.append("display_name = ?"); vals.append(display_name)
@@ -121,6 +187,8 @@ def update_extension(ext, display_name=None, secret=None, record=None, mac=None,
         fields.append("mac = ?"); vals.append(mac.upper())
     if model is not None:
         fields.append("model = ?"); vals.append(model)
+    if voicemail is not None:
+        fields.append("voicemail = ?"); vals.append(int(voicemail))
     if not fields:
         return
     vals.append(str(ext))
@@ -150,3 +218,109 @@ def model_label(model):
 def sane_ext_number(ext):
     """2..6 digit extension number not starting with 0."""
     return bool(re.fullmatch(r"[1-9][0-9]{1,5}", str(ext)))
+
+
+# -------------------------------------------------------------- ring groups
+def list_ring_groups():
+    with _conn() as c:
+        rows = c.execute("SELECT * FROM ring_groups ORDER BY id").fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_ring_group(rg_id):
+    with _conn() as c:
+        return _row_to_dict(c.execute("SELECT * FROM ring_groups WHERE id = ?", (rg_id,)).fetchone())
+
+
+def add_ring_group(name, members, timeout=20, fallback=""):
+    with _conn() as c:
+        c.execute("INSERT INTO ring_groups(name, members, timeout, fallback) VALUES (?, ?, ?, ?)",
+                  (name, members, int(timeout), fallback))
+
+
+def update_ring_group(rg_id, name, members, timeout, fallback):
+    with _conn() as c:
+        c.execute("UPDATE ring_groups SET name = ?, members = ?, timeout = ?, fallback = ? "
+                  "WHERE id = ?", (name, members, int(timeout), fallback, rg_id))
+
+
+def delete_ring_group(rg_id):
+    with _conn() as c:
+        c.execute("DELETE FROM ring_groups WHERE id = ?", (rg_id,))
+
+
+# --------------------------------------------------------------- IVR menus
+def list_ivr_menus():
+    with _conn() as c:
+        rows = c.execute("SELECT * FROM ivr_menus ORDER BY id").fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_ivr_menu(ivr_id):
+    with _conn() as c:
+        return _row_to_dict(c.execute("SELECT * FROM ivr_menus WHERE id = ?", (ivr_id,)).fetchone())
+
+
+def add_ivr_menu(name, prompt, timeout, options, fallback=""):
+    with _conn() as c:
+        c.execute("INSERT INTO ivr_menus(name, prompt, timeout, options, fallback) "
+                  "VALUES (?, ?, ?, ?, ?)", (name, prompt, int(timeout), options, fallback))
+
+
+def update_ivr_menu(ivr_id, name, prompt, timeout, options, fallback):
+    with _conn() as c:
+        c.execute("UPDATE ivr_menus SET name = ?, prompt = ?, timeout = ?, options = ?, "
+                  "fallback = ? WHERE id = ?",
+                  (name, prompt, int(timeout), options, fallback, ivr_id))
+
+
+def delete_ivr_menu(ivr_id):
+    with _conn() as c:
+        c.execute("DELETE FROM ivr_menus WHERE id = ?", (ivr_id,))
+
+
+# ----------------------------------------------------------------- holidays
+def list_holidays():
+    with _conn() as c:
+        rows = c.execute("SELECT * FROM holidays ORDER BY gdate").fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def add_holiday(gdate, label=""):
+    with _conn() as c:
+        c.execute("INSERT INTO holidays(gdate, label) VALUES (?, ?) "
+                  "ON CONFLICT(gdate) DO UPDATE SET label = excluded.label",
+                  (gdate, label))
+
+
+def delete_holiday(gdate):
+    with _conn() as c:
+        c.execute("DELETE FROM holidays WHERE gdate = ?", (gdate,))
+
+
+# ------------------------------------------------------------- destinations
+# A "destination" is encoded as "type:value" so IVR / ring groups / business
+# hours can all point at the same target kinds:
+#   ext:<number>       ring one extension
+#   rg:<id>            ring a ring group
+#   vm:main            main voicemail box
+def sane_destination(dest, allow_vm=True):
+    if not dest:
+        return False
+    kind, _, value = dest.partition(":")
+    if kind == "ext":
+        return bool(get_extension(value))
+    if kind == "rg":
+        return bool(get_ring_group(value))
+    if kind == "vm" and allow_vm:
+        return value in ("main",)
+    return False
+
+
+def destination_choices():
+    """(value, label) pairs for dropdowns in the UI."""
+    out = [(f"ext:{e['ext']}", f"داخلی {e['ext']} — {e['display_name']}")
+           for e in list_extensions()]
+    out += [(f"rg:{g['id']}", f"گروه زنگ: {g['name']}") for g in list_ring_groups()]
+    out += [("vm:main", "صندوق پیام صوتی اصلی")]
+    return out

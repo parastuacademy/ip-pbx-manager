@@ -162,3 +162,12 @@ details.card summary {
   .content { padding: 16px; }
   .grid-2 { grid-template-columns: 1fr; }
 }
+
+/* ---------------- v2 additions ---------------- */
+.ver {
+  display: inline-block; background: var(--brand); color: #fff;
+  font-size: 10px; padding: 1px 7px; border-radius: 999px; vertical-align: middle;
+}
+.qr-box { text-align: center; margin: 1rem 0; }
+.qr-box svg { width: 220px; height: 220px; background: #fff; padding: 8px; border-radius: 12px; }
+audio { vertical-align: middle; }

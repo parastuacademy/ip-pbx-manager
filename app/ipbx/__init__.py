@@ -5,10 +5,13 @@ import time
 
 from flask import Flask, abort, redirect, request, session, url_for
 
-from . import db
+from . import db, notifier
 from .routes import bp
 
 EXEMPT_PATHS = ("/login", "/setup", "/health")
+
+# Paths (prefixes) the reports-only "viewer" account may open.
+VIEWER_ALLOWED = ("/", "/cdr", "/api/status", "/health", "/logout")
 
 
 def _datetime_fa(value):
@@ -44,24 +47,37 @@ def create_app():
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["PERMANENT_SESSION_LIFETIME"] = 60 * 60 * 12  # 12h
+    app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024  # backup uploads
     app.secret_key = _secret_key(db.DATA_DIR)
 
     db.init_db()
     app.register_blueprint(bp)
+    notifier.start_once()
 
     @app.context_processor
     def _inject_csrf():
         if "csrf" not in session:
             session["csrf"] = secrets.token_hex(16)
-        return {"csrf_token": lambda: session.get("csrf", "")}
+        return {"csrf_token": lambda: session.get("csrf", ""),
+                "is_admin": lambda: session.get("role", "admin") == "admin"}
 
     @app.template_filter("datetime_fa")
     def _filter_datetime_fa(value):
         return _datetime_fa(value)
 
+    @app.template_filter("jalali_dt")
+    def _filter_jalali_dt(value):
+        from .jalali import jalali_datetime
+        return jalali_datetime(value)
+
+    @app.template_filter("fa_digits")
+    def _filter_fa_digits(value):
+        from .jalali import fa_digits
+        return fa_digits(value)
+
     @app.before_request
     def _guard():
-        """First-run redirect + authentication + CSRF check."""
+        """First-run redirect + authentication + role check + CSRF check."""
         path = request.path
         if (
             path in EXEMPT_PATHS
@@ -77,6 +93,12 @@ def create_app():
             return None
         if not session.get("user"):
             return redirect(url_for("main.login"))
+        # Viewer (reports-only) role: read-only pages only (logout always allowed).
+        if session.get("role") == "viewer" and path != "/logout":
+            allowed = any(path == p or path.startswith(p + "/") or path.startswith(p + "?")
+                          for p in VIEWER_ALLOWED)
+            if not allowed or request.method != "GET":
+                return redirect(url_for("main.dashboard"))
         if request.method == "POST":
             token = request.form.get("csrf_token", "")
             if not token or token != session.get("csrf"):

@@ -48,6 +48,114 @@
 </div>
 
 <div class="card">
+  <h3>🔔 اعلان‌ها (تلگرام / وبهوک / ایمیل)</h3>
+  <p class="hint">برای «تماس بی‌پاسخ»، «قطع شدن ترانک» و «حمله به ورود پنل» اعلان می‌گیرید. کافی است یکی از کانال‌های زیر را پر کنید.</p>
+  <form method="post" action="{{ url_for('main.settings_page') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="notify">
+    <div class="grid-2">
+      <div>
+        <label>توکن ربات تلگرام (اختیاری)</label>
+        <input type="text" name="tg_bot_token" dir="ltr" value="{{ s.get('tg_bot_token','') }}" placeholder="123456:AA...">
+      </div>
+      <div>
+        <label>شناسه گفتگوی تلگرام</label>
+        <input type="text" name="tg_chat_id" dir="ltr" value="{{ s.get('tg_chat_id','') }}" placeholder="123456789">
+      </div>
+      <div class="full">
+        <label>یا آدرس وبهوک (POST JSON — سازگار با بله/ایتا و سرویس‌های مشابه)</label>
+        <input type="text" name="webhook_url" dir="ltr" value="{{ s.get('webhook_url','') }}" placeholder="https://...">
+      </div>
+      <div>
+        <label>SMTP سرور ایمیل</label>
+        <input type="text" name="smtp_host" dir="ltr" value="{{ s.get('smtp_host','') }}" placeholder="smtp.example.com">
+      </div>
+      <div>
+        <label>پورت SMTP</label>
+        <input type="text" name="smtp_port" dir="ltr" value="{{ s.get('smtp_port','587') }}">
+      </div>
+      <div>
+        <label>کاربر SMTP</label>
+        <input type="text" name="smtp_user" dir="ltr" value="{{ s.get('smtp_user','') }}">
+      </div>
+      <div>
+        <label>رمز SMTP</label>
+        <input type="password" name="smtp_pass" dir="ltr" value="{{ s.get('smtp_pass','') }}">
+      </div>
+      <div>
+        <label>فرستنده (From)</label>
+        <input type="text" name="smtp_from" dir="ltr" value="{{ s.get('smtp_from','') }}">
+      </div>
+      <div>
+        <label>ایمیل دریافت‌کننده اعلان</label>
+        <input type="text" name="notify_email" dir="ltr" value="{{ s.get('notify_email','') }}">
+      </div>
+    </div>
+    <div class="full">
+      <label class="check"><input type="checkbox" name="notify_missed" {{ 'checked' if s.get('notify_missed') == '1' else '' }}> اعلان تماس بی‌پاسخ ورودی</label>
+      <label class="check"><input type="checkbox" name="notify_trunk" {{ 'checked' if s.get('notify_trunk') == '1' else '' }}> اعلان قطع/وصل شدن ترانک</label>
+      <label class="check"><input type="checkbox" name="notify_login" {{ 'checked' if s.get('notify_login') == '1' else '' }}> اعلان تلاش ناموفق ورود به پنل</label>
+    </div>
+    <button type="submit" class="btn btn-primary">ذخیره تنظیمات اعلان</button>
+  </form>
+  <form method="post" action="{{ url_for('main.settings_page') }}" class="inline" style="margin-top:.5rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="notify_test">
+    <button type="submit" class="btn btn-ghost">ارسال پیام آزمایشی</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>👤 حساب گزارش‌گیر (فقط مشاهده)</h3>
+  <p class="hint">این کاربر فقط داشبورد و گزارش تماس‌ها را می‌بیند و حق تغییر هیچ چیز را ندارد — مناسب مدیرعامل یا دبیر.</p>
+  <form method="post" action="{{ url_for('main.settings_page') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="viewer">
+    <div class="grid-2">
+      <div><label>رمز گزارش‌گیر (حداقل ۸ نویسه)</label><input type="password" name="viewer_password" minlength="8"></div>
+      <div><label>تکرار رمز</label><input type="password" name="viewer_password2" minlength="8"></div>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ 'تغییر رمز گزارش‌گیر' if s.get('viewer_hash') else 'ساخت حساب گزارش‌گیر' }}</button>
+    {% if s.get('viewer_hash') %}
+    <button type="submit" name="clear" value="1" class="btn btn-danger">حذف حساب گزارش‌گیر</button>
+    <p class="hint">وضعیت: حساب فعال است — در صفحه ورود، همان فیلد رمز با رمز گزارش‌گیر استفاده می‌شود.</p>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card">
+  <h3>💾 پشتیبان‌گیری و بازیابی</h3>
+  <p class="hint">فایل پشتیبان شامل تنظیمات، دیتابیس تماس‌ها و ضبط‌هاست. هر هفته یک نسخه دانلود و جای امن نگه دارید.</p>
+  <a class="btn btn-secondary" href="{{ url_for('main.backup_download') }}">⬇ دانلود پشتیبان کامل</a>
+  <form method="post" action="{{ url_for('main.backup_restore') }}" enctype="multipart/form-data" class="inline"
+        onsubmit="return confirm('بازیابی، تنظیمات فعلی را با محتوای فایل پشتیبان جایگزین می‌کند. ادامه؟');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="file" accept=".tar.gz,.tgz" required>
+    <button type="submit" class="btn btn-danger">بازیابی از فایل</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>🛡️ گزارش امنیتی (۳۰ رویداد اخیر)</h3>
+  {% if seclog %}
+  <table>
+    <thead><tr><th>زمان</th><th>رویداد</th><th>جزئیات</th></tr></thead>
+    <tbody>
+      {% for e in seclog %}
+      <tr>
+        <td dir="ltr">{{ e.ts }}</td>
+        <td>{{ {'login_ok':'ورود موفق','login_fail':'رمز نادرست','login_locked':'قفل شدن ورود','notify_error':'خطای ارسال اعلان'}.get(e.event, e.event) }}</td>
+        <td dir="ltr">{{ e.detail }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">رویدادی ثبت نشده است.</p>
+  {% endif %}
+</div>
+
+<div class="card">
   <h3>نگهداری</h3>
   <form method="post" action="{{ url_for('main.settings_page') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

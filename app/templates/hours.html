@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}ساعات کاری — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>ساعات کاری و تعطیلات</h1>
+<p class="hint">خارج از ساعات کاری و در روزهای تعطیل، تماس‌ها به «مقصد خارج از ساعات کاری» (مثلاً پیام صوتی) می‌روند. روزها به ترتیب تقویم ایران از شنبه شمرده می‌شوند.</p>
+
+<div class="card">
+  <h3>برنامه هفتگی</h3>
+  <form method="post" action="{{ url_for('main.hours_page') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="hours">
+    <label class="check">
+      <input type="checkbox" name="wh_enabled" {{ 'checked' if s.get('wh_enabled') == '1' else '' }}>
+      ساعات کاری فعال باشد
+    </label>
+    <table>
+      <thead><tr><th>روز</th><th>شروع</th><th>پایان</th></tr></thead>
+      <tbody>
+        {% for d in days %}
+        <tr>
+          <td>{{ d.fa }} <span class="hint">({{ d.ast }})</span></td>
+          <td><input type="time" name="wh_open_{{ d.idx }}" value="{{ d.open }}"></td>
+          <td><input type="time" name="wh_close_{{ d.idx }}" value="{{ d.close }}"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="hint">اگر شروع و پایان روز خالی یا برابر باشد، آن روز «تعطیل» در نظر گرفته می‌شود.</p>
+    <div class="grid-2">
+      <div>
+        <label>مقصد خارج از ساعات کاری</label>
+        <select name="closed_dest">
+          <option value="vm:main" {{ 'selected' if (s.get('closed_dest') or 'vm:main') == 'vm:main' else '' }}>صندوق پیام صوتی اصلی</option>
+          {% for value, label in dests %}
+          {% if value != 'vm:main' %}
+          <option value="{{ value }}" {{ 'selected' if s.get('closed_dest') == value else '' }}>{{ label }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">ذخیره و اعمال</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>تعطیلات رسمی (تقویم شمسی)</h3>
+  <p class="hint">مثلاً «۱۴۰۵/۰۱/۱۳ عید نوروز». در این روزها تماس‌ها مثل خارج از ساعات کاری رفتار می‌شوند.</p>
+  <form method="post" action="{{ url_for('main.hours_page') }}" class="filterbar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="holiday_add">
+    <input type="text" name="jdate" dir="ltr" placeholder="۱۴۰۵/۰۸/۱۶ → 1405/08/16" required>
+    <input type="text" name="label" placeholder="عنوان تعطیلی (مثلاً عید نوروز)">
+    <button type="submit" class="btn btn-primary">افزودن تعطیلی</button>
+  </form>
+  {% if holidays %}
+  <table>
+    <thead><tr><th>تاریخ (شمسی)</th><th>عنوان</th><th>عملیات</th></tr></thead>
+    <tbody>
+      {% for h in holidays %}
+      <tr>
+        <td>{{ h.jdate }}</td>
+        <td>{{ h.label or '—' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('main.hours_page') }}" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="holiday_del">
+            <input type="hidden" name="gdate" value="{{ h.gdate }}">
+            <button type="submit" class="btn btn-small btn-danger">حذف</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">تعطیلی ثبت نشده است.</p>
+  {% endif %}
+</div>
+{% endblock %}

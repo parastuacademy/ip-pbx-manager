@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}پیام‌های صوتی — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>پیام‌های صوتی (وویس‌میل)</h1>
+<p class="hint">برای هر داخلی، از صفحه «داخلی‌ها → ویرایش» گزینه پیام صوتی را روشن کنید. همه تلفن‌ها هم با شماره‌گیری <b dir="ltr">*98</b> می‌توانند پیام‌های خود را بشنوند.</p>
+
+{% if boxes %}
+{% for box in boxes %}
+<div class="card">
+  <h3>📭 {{ box.name }} {% if box.ext != 'main' %}<span dir="ltr" class="mono">({{ box.ext }})</span>{% endif %}</h3>
+  {% if box.messages %}
+  <table>
+    <thead><tr><th>#</th><th>زمان</th><th>حجم</th><th>پخش</th><th>عملیات</th></tr></thead>
+    <tbody>
+      {% for msg in box.messages %}
+      <tr>
+        <td>{{ msg.num }}</td>
+        <td>{{ msg.mtime | datetime_fa }}</td>
+        <td>{{ (msg.size / 1024) | round(0) }} کیلوبایت</td>
+        <td>
+          <audio controls preload="none" style="max-width:320px"
+                 src="{{ url_for('main.voicemail_audio', mbx=box.ext, fname=msg.name) }}"></audio>
+        </td>
+        <td>
+          <a class="btn btn-small btn-ghost" href="{{ url_for('main.voicemail_audio', mbx=box.ext, fname=msg.name) }}">دانلود</a>
+          <form method="post" class="inline"
+                action="{{ url_for('main.voicemail_delete', mbx=box.ext, fname=msg.name) }}"
+                onsubmit="return confirm('این پیام حذف شود؟');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-small btn-danger">حذف</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">پیامی در این صندوق نیست.</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<div class="card">
+  <p class="muted">هیچ داخلی‌ای پیام صوتی ندارد. از صفحه «داخلی‌ها» آن را برای داخلی‌های موردنظر روشن کنید.</p>
+</div>
+{% endif %}
+{% endblock %}

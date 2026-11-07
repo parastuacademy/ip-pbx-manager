@@ -7,8 +7,12 @@
   <form method="get" action="{{ url_for('main.cdr_page') }}" class="filterbar">
     <input type="text" name="q" dir="ltr" placeholder="شماره…" value="{{ q }}">
     <input type="date" name="date" value="{{ date }}">
+    <label class="check" style="margin:0">
+      <input type="checkbox" name="missed" value="1" {{ 'checked' if missed else '' }}> فقط بی‌پاسخ
+    </label>
     <button type="submit" class="btn btn-primary">فیلتر</button>
     <a class="btn btn-ghost" href="{{ url_for('main.cdr_page') }}">همه</a>
+    <a class="btn btn-secondary" href="{{ url_for('main.cdr_export', q=q, date=date, missed='1' if missed else '0') }}">⬇ خروجی اکسل</a>
   </form>
 </div>
 
@@ -16,15 +20,15 @@
   {% if rows %}
   <table>
     <thead>
-      <tr><th>مبدأ</th><th>مقصد</th><th>زمان شروع</th><th>مدت مکالمه</th><th>وضعیت</th></tr>
+      <tr><th>مبدأ</th><th>مقصد</th><th>زمان شروع (شمسی)</th><th>مدت مکالمه</th><th>وضعیت</th></tr>
     </thead>
     <tbody>
       {% for r in rows %}
       <tr>
         <td dir="ltr">{{ r.src or '—' }}</td>
         <td dir="ltr">{{ r.dst or '—' }}</td>
-        <td dir="ltr">{{ r.start }}</td>
-        <td dir="ltr">{{ r.billsec }} ثانیه</td>
+        <td dir="ltr">{{ r.start | jalali_dt }}</td>
+        <td dir="ltr">{{ r.billsec | fa_digits }} ثانیه</td>
         <td>{{ {'ANSWERED':'پاسخ داده شد','NO ANSWER':'بدون پاسخ','BUSY':'مشغول',
                  'FAILED':'ناموفق','CONGESTION':'اشباع شبکه'}.get(r.disposition, r.disposition) }}</td>
       </tr>

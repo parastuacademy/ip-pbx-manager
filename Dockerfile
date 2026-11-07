@@ -29,7 +29,8 @@ COPY entrypoint.sh /opt/ipbx/entrypoint.sh
 COPY supervisord-all.conf /opt/ipbx/supervisord-all.conf
 
 RUN chmod +x /opt/ipbx/entrypoint.sh \
-    && mkdir -p /data/asterisk /data/cdr /data/recordings /data/astdb /data/log /data/spool
+    && mkdir -p /data/asterisk/sounds/custom /data/cdr /data/recordings /data/astdb /data/log \
+       /data/spool/asterisk/voicemail/default
 
 ENV PBX_ROLE=all \
     AMI_HOST=localhost \

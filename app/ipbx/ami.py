@@ -117,6 +117,7 @@ class AMIClient:
     def reload_all(self):
         self.command("pjsip reload")
         self.command("dialplan reload")
+        self.command("voicemail reload")
 
     def db_put_record(self, ext, value="1"):
         self.command(f"database put rec {ext} {value}")
@@ -124,6 +125,15 @@ class AMIClient:
     def db_del_record(self, ext):
         try:
             self.command(f"database del rec {ext}")
+        except AMIError:
+            pass  # already absent
+
+    def db_put_vm(self, ext, value="1"):
+        self.command(f"database put vm {ext} {value}")
+
+    def db_del_vm(self, ext):
+        try:
+            self.command(f"database del vm {ext}")
         except AMIError:
             pass  # already absent
 

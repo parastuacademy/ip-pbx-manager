@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}ثبت موبایل — داخلی {{ e.ext }}{% endblock %}
+{% block body %}
+<h1>ثبت موبایل با QR — داخلی {{ e.ext }}</h1>
+
+<div class="card">
+  <h3>۱) اپ Grandstream Wave (اندروید/iOS)</h3>
+  <p class="hint">در اپ Wave مسیر <b>Settings → Account Settings → Scan QR Code</b> را باز کنید و این کد را اسکن کنید. گوشی به‌طور خودکار به سرور پروویژنینگ وصل و داخلی را ثبت می‌کند.</p>
+  {% if svg %}
+  <div class="qr-box">{{ svg | safe }}</div>
+  {% else %}
+  <p class="muted">کتابخانه QR در دسترس نیست؛ از آدرس زیر به‌صورت دستی استفاده کنید.</p>
+  {% endif %}
+  <div class="copybox"><code dir="ltr" id="qr-url">{{ url }}</code>
+    <button type="button" class="btn btn-small btn-ghost"
+            onclick="navigator.clipboard.writeText(document.getElementById('qr-url').textContent)">کپی</button>
+  </div>
+  <p class="hint">نکته: MAC گوشی دسکتاپ گرنداستریم هم از همین آدرس پروویژن می‌شود.</p>
+</div>
+
+<div class="card">
+  <h3>۲) اپ‌های دیگر (Zoiper / Linphone / Grandstream Wave دستی)</h3>
+  <p class="hint">این مشخصات را در اپ موبایل وارد کنید:</p>
+  <table>
+    <tbody>
+      <tr><th>سرور (SIP Server)</th><td dir="ltr" class="mono" id="sip-server">{{ sip.split('@')[1] }}</td></tr>
+      <tr><th>شماره داخلی (Username)</th><td dir="ltr" class="mono">{{ e.ext }}</td></tr>
+      <tr><th>رمز (Password)</th><td dir="ltr" class="mono">{{ e.secret }}</td></tr>
+      <tr><th>پورت</th><td dir="ltr" class="mono">5060</td></tr>
+    </tbody>
+  </table>
+  <p class="hint">موبایل باید به همان شبکه (اینترنت/VPN) که سرور دیده می‌شود متصل باشد.</p>
+  <a class="btn btn-ghost" href="{{ url_for('main.extensions') }}">بازگشت به داخلی‌ها</a>
+</div>
+{% endblock %}

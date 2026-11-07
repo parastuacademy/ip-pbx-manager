@@ -11,15 +11,26 @@
 {% if session.get('user') %}
 <div class="layout">
   <aside class="sidebar">
-    <div class="brand">📞 پنل تلفن آی‌پی</div>
+    <div class="brand">📞 پنل تلفن آی‌پی <span class="ver">v2</span></div>
     <nav>
       <a href="{{ url_for('main.dashboard') }}" class="{{ 'active' if request.path == '/' else '' }}">داشبورد</a>
+      {% if is_admin() %}
       <a href="{{ url_for('main.extensions') }}" class="{{ 'active' if request.path.startswith('/extensions') else '' }}">داخلی‌ها</a>
+      <a href="{{ url_for('main.ringgroups') }}" class="{{ 'active' if request.path.startswith('/ringgroups') else '' }}">گروه زنگ</a>
+      <a href="{{ url_for('main.ivr_page') }}" class="{{ 'active' if request.path.startswith('/ivr') else '' }}">منوی صوتی</a>
+      <a href="{{ url_for('main.hours_page') }}" class="{{ 'active' if request.path.startswith('/hours') else '' }}">ساعات کاری</a>
       <a href="{{ url_for('main.trunk') }}" class="{{ 'active' if request.path.startswith('/trunk') else '' }}">ترانک پیشگامان</a>
+      {% endif %}
       <a href="{{ url_for('main.cdr_page') }}" class="{{ 'active' if request.path.startswith('/cdr') else '' }}">تماس‌ها</a>
+      {% if is_admin() %}
       <a href="{{ url_for('main.recordings') }}" class="{{ 'active' if request.path.startswith('/recordings') else '' }}">ضبط‌ها</a>
+      <a href="{{ url_for('main.voicemail_page') }}" class="{{ 'active' if request.path.startswith('/voicemail') else '' }}">پیام‌های صوتی</a>
       <a href="{{ url_for('main.settings_page') }}" class="{{ 'active' if request.path.startswith('/settings') else '' }}">تنظیمات</a>
+      {% endif %}
     </nav>
+    {% if session.get('role') == 'viewer' %}
+    <div class="hint" style="padding:0 1rem">👤 حساب گزارش‌گیر — فقط مشاهده</div>
+    {% endif %}
     <form method="post" action="{{ url_for('main.logout') }}" class="logout-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-ghost btn-block">خروج از پنل</button>

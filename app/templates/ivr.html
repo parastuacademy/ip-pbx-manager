@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}منوی صوتی — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>منوی صوتی (IVR)</h1>
+<p class="hint">تماس ورودی، پیام شما را می‌شنود («برای فروش ۱ را بزنید…») و با زدن شماره به مقصد مربوطه وصل می‌شود. اگر تماس‌گیرنده عدد نزند یا اشتباه بزند، به مقصد پیش‌فرض می‌رود. پیام را با ضبط صوت به‌صورت WAV بسازید و آپلود کنید.</p>
+
+<details class="card" {% if not menus or edit_menu %}open{% endif %}>
+  <summary>➕ {{ 'ویرایش منوی صوتی' if edit_menu else 'افزودن منوی صوتی' }}</summary>
+  <form method="post" action="{{ url_for('main.ivr_page') }}" enctype="multipart/form-data" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if edit_menu %}<input type="hidden" name="id" value="{{ edit_menu.id }}">{% endif %}
+    <div class="grid-2">
+      <div>
+        <label>نام منو</label>
+        <input type="text" name="name" placeholder="منوی اصلی" value="{{ edit_menu.name if edit_menu else '' }}">
+      </div>
+      <div>
+        <label>انتظار برای گرفتن عدد (ثانیه)</label>
+        <input type="number" name="timeout" min="2" max="30" value="{{ edit_menu.timeout if edit_menu else 6 }}">
+      </div>
+      <div>
+        <label>پیام صوتی (از فایل‌های موجود)</label>
+        <select name="prompt_select">
+          <option value="">— انتخاب نشده —</option>
+          {% for p in prompts %}
+          <option value="{{ p }}" {{ 'selected' if edit_menu and edit_menu.prompt == p else '' }}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>یا آپلود پیام جدید (WAV — ترجیحاً ۸۰۰۰Hz)</label>
+        <input type="file" name="prompt_file" accept=".wav,audio/wav">
+      </div>
+      <div>
+        <label>مقصد پیش‌فرض (بدون پاسخ / عدد اشتباه)</label>
+        <select name="fallback">
+          <option value="vm:main" {{ 'selected' if (edit_menu.fallback or 'vm:main') == 'vm:main' else '' }}>صندوق پیام صوتی اصلی</option>
+          {% for value, label in dests %}
+          {% if value != 'vm:main' %}
+          <option value="{{ value }}" {{ 'selected' if edit_menu and edit_menu.fallback == value else '' }}>{{ label }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <h3>گزینه‌های منو</h3>
+    {% set opts = edit_menu.options_dict.items() | list if edit_menu else [] %}
+    {% for i in range(6) %}
+    {% set o = opts[i] if opts | length > i else none %}
+    <div class="grid-2">
+      <div>
+        <label>کلید {{ i + 1 }}</label>
+        <select name="opt_digit">
+          <option value=""></option>
+          {% for d in ['1','2','3','4','5','6','7','8','9','0'] %}
+          <option value="{{ d }}" {{ 'selected' if o and o[0] == d else '' }}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>مقصد کلید {{ i + 1 }}</label>
+        <select name="opt_dest">
+          {% for value, label in dests %}
+          <option value="{{ value }}" {{ 'selected' if o and o[1] == value else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    {% endfor %}
+    <p class="hint">مقصد داخلی‌ها مستقیم زنگ می‌خورد؛ «گروه زنگ» همه اعضا را با هم زنگ می‌زند.</p>
+    <button type="submit" class="btn btn-primary">ذخیره و اعمال</button>
+    {% if edit_menu %}<a class="btn btn-ghost" href="{{ url_for('main.ivr_page') }}">انصراف</a>{% endif %}
+  </form>
+</details>
+
+<div class="card">
+  {% if menus %}
+  <table>
+    <thead><tr><th>نام</th><th>پیام صوتی</th><th>گزینه‌ها</th><th>مقصد پیش‌فرض</th><th>عملیات</th></tr></thead>
+    <tbody>
+      {% for m in menus %}
+      <tr>
+        <td>{{ m.name }}{% if loop.first %} <span class="badge badge-ok">منوی اصلی ورودی</span>{% endif %}</td>
+        <td dir="ltr" class="mono">{{ m.prompt or '—' }}</td>
+        <td>{% for digit, d in m.options_dict.items() %}<span class="badge">{{ digit }}</span> {% endfor %}{{ 'بدون گزینه' if not m.options_dict }}</td>
+        <td>{{ {'vm:main': 'پیام صوتی اصلی'}.get(m.fallback, m.fallback or 'پیام صوتی اصلی') }}</td>
+        <td class="actions">
+          <a class="btn btn-small btn-ghost" href="{{ url_for('main.ivr_page', edit=m.id) }}">ویرایش</a>
+          <form method="post" action="{{ url_for('main.ivr_page') }}" class="inline"
+                onsubmit="return confirm('منوی «{{ m.name }}» حذف شود؟');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="id" value="{{ m.id }}">
+            <button type="submit" class="btn btn-small btn-danger">حذف</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">هنوز منویی ساخته نشده است؛ تماس ورودی مستقیم به مقصد تنظیم‌شده در «تنظیمات» وصل می‌شود.</p>
+  {% endif %}
+</div>
+{% endblock %}

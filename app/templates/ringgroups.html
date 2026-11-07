@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}گروه زنگ — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>گروه زنگ</h1>
+<p class="hint">با گروه زنگ، یک تماس ورودی به‌طور هم‌زمان روی چند داخلی زنگ می‌زند؛ اگر کسی تا پایان زمان جواب ندهد، تماس به «مقصد پیش‌فرض» (مثلاً پیام صوتی) می‌رود.</p>
+
+<details class="card" {% if not groups or edit_group %}open{% endif %}>
+  <summary>➕ {{ 'ویرایش گروه زنگ' if edit_group else 'افزودن گروه زنگ' }}</summary>
+  <form method="post" action="{{ url_for('main.ringgroups') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if edit_group %}<input type="hidden" name="id" value="{{ edit_group.id }}">{% endif %}
+    <div class="grid-2">
+      <div>
+        <label>نام گروه</label>
+        <input type="text" name="name" placeholder="پذیرش" value="{{ edit_group.name if edit_group else '' }}">
+      </div>
+      <div>
+        <label>داخلی‌های عضو (با کاما)</label>
+        <input type="text" name="members" dir="ltr" placeholder="101,102,103"
+               value="{{ edit_group.members if edit_group else '' }}">
+      </div>
+      <div>
+        <label>زمان زنگ خوردن (ثانیه)</label>
+        <input type="number" name="timeout" min="5" max="120" value="{{ edit_group.timeout if edit_group else 20 }}">
+      </div>
+      <div>
+        <label>مقصد پیش‌فرض (اگر کسی جواب نداد)</label>
+        <select name="fallback">
+          <option value="vm:main" {{ 'selected' if (edit_group.fallback or 'vm:main') == 'vm:main' else '' }}>صندوق پیام صوتی اصلی</option>
+          {% for value, label in dests %}
+          {% if value != 'vm:main' %}
+          <option value="{{ value }}" {{ 'selected' if edit_group and edit_group.fallback == value else '' }}>{{ label }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">ذخیره و اعمال</button>
+    {% if edit_group %}<a class="btn btn-ghost" href="{{ url_for('main.ringgroups') }}">انصراف</a>{% endif %}
+  </form>
+</details>
+
+<div class="card">
+  {% if groups %}
+  <table>
+    <thead><tr><th>نام</th><th>اعضا</th><th>زمان</th><th>مقصد پیش‌فرض</th><th>عملیات</th></tr></thead>
+    <tbody>
+      {% for g in groups %}
+      <tr>
+        <td>{{ g.name }}</td>
+        <td dir="ltr">{{ g.members }}</td>
+        <td>{{ g.timeout }} ثانیه</td>
+        <td>{{ {'vm:main': 'پیام صوتی اصلی'}.get(g.fallback, g.fallback or 'پیام صوتی اصلی') }}</td>
+        <td class="actions">
+          <a class="btn btn-small btn-ghost" href="{{ url_for('main.ringgroups', edit=g.id) }}">ویرایش</a>
+          <form method="post" action="{{ url_for('main.ringgroups') }}" class="inline"
+                onsubmit="return confirm('گروه «{{ g.name }}» حذف شود؟');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="id" value="{{ g.id }}">
+            <button type="submit" class="btn btn-small btn-danger">حذف</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">هنوز گروهی ساخته نشده است. مثال رایج: گروه «پذیرش» با اعضای ۱۰۱ و ۱۰۲.</p>
+  {% endif %}
+</div>
+{% endblock %}
