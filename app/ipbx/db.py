@@ -17,6 +17,7 @@ DB_PATH = os.path.join(DATA_DIR, "ipbx.db")
 
 _MODELS = [
     ("generic", "عمومی (همه مدل‌ها)"),
+    ("yealink", "Yealink سری T و W (رایج‌ترین — T19/T21/T27/T31/T33/T4x)"),
     ("gxp16xx", "Grandstream GXP16xx (1620/1625/1630)"),
     ("gxp21xx", "Grandstream GXP21xx (2130/2140/2160)"),
     ("grp2600", "Grandstream GRP2600 (2601/2602/2603)"),

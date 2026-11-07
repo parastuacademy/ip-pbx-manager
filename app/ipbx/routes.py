@@ -484,14 +484,19 @@ def settings_page():
 # ------------------------------------------------------------- provisioning
 @bp.get("/provisioning/<path:fname>")
 def provisioning_file(fname):
-    mac = provisioning.parse_mac(fname)
+    kind, mac = provisioning.identify(fname)
     ext = db.get_extension_by_mac(mac) if mac else None
     if not ext:
         abort(404)
     server_ip = db.get_setting("lan_ip") or request.host.split(":")[0]
-    xml = provisioning.build_config(ext, server_ip)
-    resp = make_response(xml, 200)
-    resp.headers["Content-Type"] = "text/xml; charset=utf-8"
+    if kind == "yealink":
+        body = provisioning.build_yealink_config(ext, server_ip)
+        ctype = "text/plain; charset=utf-8"
+    else:
+        body = provisioning.build_config(ext, server_ip)
+        ctype = "text/xml; charset=utf-8"
+    resp = make_response(body, 200)
+    resp.headers["Content-Type"] = ctype
     return resp
 
 

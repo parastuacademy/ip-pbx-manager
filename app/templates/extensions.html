@@ -79,17 +79,20 @@
 </div>
 
 <div class="card">
-  <h3>📞 پروویژنینگ خودکار تلفن‌های گرنداستریم</h3>
+  <h3>📞 پروویژنینگ خودکار تلفن‌ها (گرنداستریم و یالینک)</h3>
   <ol>
-    <li>MAC گوشی را در داخلی مربوطه ثبت کنید (افزودن یا ویرایش داخلی).</li>
-    <li>در وب‌رابط گوشی مسیر <b>Maintenance → Upgrade/Provisioning</b> را باز کنید.</li>
-    <li>در فیلد Config Server Path این آدرس را بگذارید:</li>
+    <li>مدل گوشی را در داخلی انتخاب و MAC آن را ثبت کنید (افزودن یا ویرایش داخلی).</li>
+    <li>این آدرس را در وب‌رابط گوشی، در فیلد Server URL/Path بگذارید:</li>
   </ol>
   <div class="copybox"><code dir="ltr" id="prov-url">{{ provisioning_base }}</code>
     <button type="button" class="btn btn-small btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('prov-url').textContent)">کپی</button>
   </div>
-  <p class="hint">گوشی پس از ری‌استارت، داخلی و رمز را خودکار دریافت می‌کند. فایل هر گوشی:
-    <code dir="ltr">{{ provisioning_base }}cfg&lt;MAC&gt;.xml</code></p>
+  <p class="hint">گوشی پس از ری‌استارت، داخلی و رمز را خودکار دریافت می‌کند.<br>
+    <b>گرنداستریم:</b> مسیر <span dir="ltr">Maintenance → Upgrade/Provisioning</span> — فایل هر گوشی:
+    <code dir="ltr">{{ provisioning_base }}cfg&lt;MAC&gt;.xml</code><br>
+    <b>یالینک:</b> مسیر <span dir="ltr">Settings → Auto Provision → Server URL</span> — فایل هر گوشی:
+    <code dir="ltr">{{ provisioning_base }}&lt;MAC&gt;.cfg</code></p>
+  <p class="hint">سایر برندها (Fanvil و…) با اطلاعات SIP همان داخلی، دستی تنظیم می‌شوند.</p>
 </div>
 
 <script>
