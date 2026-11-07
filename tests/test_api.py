@@ -390,8 +390,21 @@ class WebhookEngineTests(Base):
 
 
 class CdrReaderTests(Base):
-    def test_find_recording_fallbacks(self):
+    @staticmethod
+    def _clear_recordings():
         os.makedirs(cdr.RECORDINGS_DIR, exist_ok=True)
+        for name in os.listdir(cdr.RECORDINGS_DIR):
+            os.unlink(os.path.join(cdr.RECORDINGS_DIR, name))
+
+    def setUp(self):
+        super().setUp()
+        self._clear_recordings()  # tolerate leftovers from earlier runs
+
+    def tearDown(self):
+        self._clear_recordings()
+        super().tearDown()
+
+    def test_find_recording_fallbacks(self):
         self.assertIsNone(cdr.find_recording("123.45"))
         path = os.path.join(cdr.RECORDINGS_DIR, "123.45.wav")
         with open(path, "wb") as fh:
