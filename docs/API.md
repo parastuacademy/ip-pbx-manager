@@ -6,7 +6,7 @@ REST API پنل تلفن آی‌پی به نرم‌افزارهای دیگر ا�
 - **قالب پاسخ:** همه پاسخ‌ها JSON با پوشش ثابت:
   - موفق: `{"ok": true, "data": ...}` (گاهی همراه `"meta"`)
   - خطا: `{"ok": false, "error": {"code": "...", "message": "..."}}`
-- **بدنه درخواست‌ها:** JSON (`Content-Type: application/json`) — فرم هم پذیرفته می‌شود.
+- **بدنه درخواست‌ها:** فقط JSON با `Content-Type: application/json` — فرم و URL-encoded پذیرفته نمی‌شود.
 - **مشخصات OpenAPI** برای ایمپورت در Postman/Insomnia: فایل `docs/openapi.yaml`
 
 ---
