@@ -1,18 +1,23 @@
-"""Call Detail Record (CDR) reading — shared by the panel UI and the API.
+"""Call Detail Record (CDR) reading — the single source of truth shared
+by the panel UI, the external API, the webhook engine and the notifier.
 
-Asterisk writes one CSV file (/data/log/cdr-csv/Master.csv). Column position
-is detected from the disposition field so both the standard 18-column layout
-(with accountcode) and the 17-column one work:
+Asterisk appends every call to one CSV file (/data/log/cdr-csv/Master.csv).
+The panel generates asterisk/cdr.conf itself (usegmtime=no, accountcodes=yes,
+loguniqueid=yes, loguserfield=yes), so the layout is fixed — exactly the 18
+columns of asterisk/cdr/cdr_csv.c:
 
-    start = dispo-5, answer = dispo-4, end = dispo-3, duration = dispo-2,
-    billsec = dispo-1, src = dispo-13, dst = dispo-12,
-    uniqueid = dispo+2, userfield = dispo+3 (when present)
+    0 accountcode    1 src           2 dst          3 dcontext
+    4 clid           5 channel       6 dstchannel   7 lastapp
+    8 lastdata       9 start        10 answer      11 end
+   12 duration      13 billsec      14 disposition 15 amaflags
+   16 uniqueid      17 userfield
 
-Only the last MAX_LINES lines are considered — enough for a small
+If the layout ever changes, change it here (and in cdr.conf) — nowhere else.
+
+Only the last MAX_LINES lines are considered — plenty for a small
 organisation and keeps the panel fast forever.
 """
 import csv
-import glob
 import os
 from collections import deque
 
@@ -23,7 +28,27 @@ MAX_LINES = 5000
 CDR_PATH = os.path.join(db.DATA_DIR, "log", "cdr-csv", "Master.csv")
 RECORDINGS_DIR = os.path.join(db.DATA_DIR, "recordings")
 
-_KNOWN_DISPO = {"ANSWERED", "NO ANSWER", "BUSY", "FAILED", "CONGESTION"}
+# Fixed column positions of the layout our cdr.conf produces (see above).
+COL_SRC, COL_DST = 1, 2
+COL_START, COL_ANSWER, COL_END = 9, 10, 11
+COL_DURATION, COL_BILLSEC = 12, 13
+COL_DISPO, COL_UNIQUEID, COL_USERFIELD = 14, 16, 17
+
+DISPOSITIONS = ("ANSWERED", "NO ANSWER", "BUSY", "FAILED", "CONGESTION")
+
+
+def parse_row(row):
+    """One CSV row (list of cells) -> call dict, or None for the header
+    line and anything malformed."""
+    if len(row) != 18 or row[COL_DISPO].strip() not in DISPOSITIONS:
+        return None
+    return {
+        "src": row[COL_SRC], "dst": row[COL_DST],
+        "start": row[COL_START], "answer": row[COL_ANSWER],
+        "end": row[COL_END], "duration": row[COL_DURATION],
+        "billsec": row[COL_BILLSEC], "disposition": row[COL_DISPO].strip(),
+        "uniqueid": row[COL_UNIQUEID], "userfield": row[COL_USERFIELD],
+    }
 
 
 def read_cdr(q="", date="", disposition="", limit=400, offset=0):
@@ -32,7 +57,7 @@ def read_cdr(q="", date="", disposition="", limit=400, offset=0):
     Filters:
       q           substring match on src or dst
       date        YYYY-MM-DD prefix match on start time
-      disposition one of _KNOWN_DISPO ("" = all)
+      disposition one of DISPOSITIONS ("" = all)
     """
     if not os.path.exists(CDR_PATH):
         return [], 0
@@ -40,32 +65,16 @@ def read_cdr(q="", date="", disposition="", limit=400, offset=0):
         lines = deque(fh, maxlen=MAX_LINES)
     matches = []
     for row in csv.reader(lines):
-        dispo_idx, dispo = None, ""
-        for i in range(len(row)):
-            if row[i].strip() in _KNOWN_DISPO:
-                dispo_idx, dispo = i, row[i].strip()
-                break
-        if dispo_idx is None or dispo_idx < 13:
-            continue  # header / malformed line
-        if disposition and dispo != disposition:
+        call = parse_row(row)
+        if call is None:
             continue
-
-        def col(offset, _row=row, _i=dispo_idx):
-            j = _i + offset
-            return _row[j] if 0 <= j < len(_row) else ""
-
-        src, dst, start = col(-13), col(-12), col(-5)
-        if q and q not in src and q not in dst:
+        if disposition and call["disposition"] != disposition:
             continue
-        if date and not start.startswith(date):
+        if q and q not in call["src"] and q not in call["dst"]:
             continue
-        matches.append({
-            "src": src, "dst": dst, "start": start,
-            "answer": col(-4), "end": col(-3),
-            "duration": col(-2), "billsec": col(-1),
-            "disposition": dispo, "uniqueid": col(2),
-            "userfield": col(3),
-        })
+        if date and not call["start"].startswith(date):
+            continue
+        matches.append(call)
     matches.reverse()  # newest first
     total = len(matches)
     return matches[offset: offset + max(0, int(limit))], total
@@ -96,13 +105,47 @@ def call_direction(row, settings=None):
     return "unknown"
 
 
+def current_size():
+    """Current byte size of the CDR file (0 when it does not exist yet)."""
+    return os.path.getsize(CDR_PATH) if os.path.exists(CDR_PATH) else 0
+
+
+def tail_new_rows(last_size):
+    """(calls, new_size) — calls appended since byte offset last_size.
+
+    A trailing line without its newline yet is left for the next tick, so
+    a row is only ever parsed once and only when complete. Used by the
+    notifier and the webhook engine; last_size comes back from the
+    previous call (or current_size() at startup).
+    """
+    if not os.path.exists(CDR_PATH):
+        return [], 0
+    size = os.path.getsize(CDR_PATH)
+    if size < last_size:  # rotated/truncated — start over
+        last_size = 0
+    if size == last_size:
+        return [], last_size
+    with open(CDR_PATH, "rb") as fh:
+        fh.seek(last_size)
+        chunk = fh.read(size - last_size)
+    nl = chunk.rfind(b"\n")
+    if nl < 0:
+        return [], last_size  # wait for the rest of the line on the next tick
+    calls = []
+    for line in chunk[: nl + 1].decode("utf-8", "replace").splitlines():
+        call = parse_row(next(csv.reader([line]), []))
+        if call is not None:
+            calls.append(call)
+    return calls, last_size + nl + 1
+
+
 def find_recording(uniqueid):
-    """Absolute path of the recording for a call, or None."""
+    """Absolute path of the call recording, or None.
+
+    The generated dialplan records every call as <uniqueid>.wav, so the
+    lookup is one fixed path — no format guessing.
+    """
     if not uniqueid:
         return None
-    for ext in (".wav", ".mp3", ".wav49", ".gsm"):
-        path = os.path.join(RECORDINGS_DIR, f"{uniqueid}{ext}")
-        if os.path.isfile(path):
-            return path
-    hits = glob.glob(os.path.join(RECORDINGS_DIR, f"{glob.escape(uniqueid)}.*"))
-    return hits[0] if hits else None
+    path = os.path.join(RECORDINGS_DIR, f"{uniqueid}.wav")
+    return path if os.path.isfile(path) else None

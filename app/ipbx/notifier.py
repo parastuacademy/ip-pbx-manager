@@ -19,10 +19,9 @@ import urllib.parse
 import urllib.request
 from email.message import EmailMessage
 
-from . import db, jalali
+from . import cdr, db, jalali
 
 _lock_path = os.path.join(db.DATA_DIR, "notifier.lock")
-_cdr_path = os.path.join(db.DATA_DIR, "log", "cdr-csv", "Master.csv")
 
 _last_size = 0
 _last_trunk_online = None
@@ -96,57 +95,23 @@ def notify_bruteforce(ip):
 
 
 # --------------------------------------------------------------- watch loop
-_KNOWN_DISPO = {"ANSWERED", "NO ANSWER", "BUSY", "FAILED", "CONGESTION"}
-
-
 def _scan_cdr(settings):
-    """Parse new CDR rows appended since the last tick; alert on missed inbound.
-
-    Uses the same robust column detection as the panel (position of the
-    disposition field): start = dispo-5, src = dispo-13, dst = dispo-12.
-    """
+    """Alert on inbound calls appended to the CDR since the last tick
+    that rang the inbound destination but were not answered."""
     global _last_size
-    if not os.path.exists(_cdr_path):
-        _last_size = 0
-        return
-    size = os.path.getsize(_cdr_path)
-    if size < _last_size:  # rotated/truncated
-        _last_size = 0
-    if size == _last_size:
-        return
-    with open(_cdr_path, "rb") as fh:
-        fh.seek(_last_size)
-        chunk = fh.read(size - _last_size)
-    # keep the last (possibly partial) line for the next tick
-    nl = chunk.rfind(b"\n")
-    if nl < 0:
-        return
-    complete, _partial = chunk[: nl + 1], chunk[nl + 1:]
-    _last_size = size - len(_partial)
+    rows, _last_size = cdr.tail_new_rows(_last_size)
     dest = (settings.get("inbound_dest") or "").strip()
-    for line in complete.decode("utf-8", "replace").splitlines():
-        row = next(__import__("csv").reader([line]))
-        dispo_idx, dispo = None, ""
-        for i, cell in enumerate(row):
-            if cell.strip() in _KNOWN_DISPO:
-                dispo_idx, dispo = i, cell.strip()
-                break
-        if dispo_idx is None or dispo_idx < 13 or dispo == "ANSWERED":
-            continue
-        def col(offset, _row=row, _i=dispo_idx):
-            j = _i + offset
-            return _row[j] if 0 <= j < len(_row) else ""
-        src, dst, start = col(-13), col(-12), col(-5)
-        if not dest or dst != dest:  # only inbound misses matter to the owner
-            continue
-        jdate = ""
+    for call in rows:
+        if call["disposition"] == "ANSWERED" or call["dst"] != dest:
+            continue  # only unanswered calls to the inbound destination matter
+        jdate, hhmm = "", call["start"]
         try:
-            t = time.strptime(start[:19], "%Y-%m-%d %H:%M:%S")
+            t = time.strptime(call["start"][:19], "%Y-%m-%d %H:%M:%S")
             jdate = jalali.format_jalali_long(t.tm_year, t.tm_mon, t.tm_mday)
             hhmm = f"{t.tm_hour:02d}:{t.tm_minute:02d}"
         except ValueError:
-            hhmm = start
-        send_async(f"📵 تماس بی‌پاسخ: از {src} به داخلی {dst}\n"
+            pass
+        send_async(f"📵 تماس بی‌پاسخ: از {call['src']} به داخلی {call['dst']}\n"
                    f"🕒 {jdate} — ساعت {hhmm}")
 
 
@@ -174,7 +139,7 @@ def _watch_loop():
     # settle once at boot so we do not alert on old state
     global _last_size
     time.sleep(15)
-    _last_size = os.path.getsize(_cdr_path) if os.path.exists(_cdr_path) else 0
+    _last_size = cdr.current_size()
     while True:
         time.sleep(60)
         try:
@@ -197,7 +162,7 @@ def start_once():
             except OSError:
                 lock_fh.close()
                 return  # another instance owns the watcher
-            _last_size = os.path.getsize(_cdr_path) if os.path.exists(_cdr_path) else 0
+            _last_size = cdr.current_size()
             threading.Thread(target=_watch_loop, daemon=True, name="ipbx-notifier").start()
         except Exception:  # noqa: BLE001 — never break app startup
             pass

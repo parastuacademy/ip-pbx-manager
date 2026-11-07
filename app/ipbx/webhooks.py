@@ -31,7 +31,6 @@ import urllib.request
 from . import cdr, db
 
 _lock_path = os.path.join(db.DATA_DIR, "webhooks.lock")
-_cdr_path = cdr.CDR_PATH
 
 RETRY_DELAYS = {1: 15, 2: 60, 3: 300}  # attempt -> seconds until next try
 MAX_ATTEMPTS = 4
@@ -76,43 +75,11 @@ def emit_call_events(row):
 
 # ---------------------------------------------------------------- CDR tail
 def _scan_cdr():
+    """Emit events for every call appended to the CDR since the last tick."""
     global _last_size
-    if not os.path.exists(_cdr_path):
-        _last_size = 0
-        return
-    size = os.path.getsize(_cdr_path)
-    if size < _last_size:  # rotated/truncated
-        _last_size = 0
-    if size == _last_size:
-        return
-    with open(_cdr_path, "rb") as fh:
-        fh.seek(_last_size)
-        chunk = fh.read(size - _last_size)
-    nl = chunk.rfind(b"\n")
-    if nl < 0:
-        return  # wait for the rest of the line on the next tick
-    complete, _partial = chunk[: nl + 1], chunk[nl + 1:]
-    _last_size = size - len(_partial)
-    import csv as _csv
-    for line in complete.decode("utf-8", "replace").splitlines():
-        try:
-            row = next(_csv.reader([line]))
-        except StopIteration:
-            continue
-        idx, dispo = None, ""
-        for i, cell in enumerate(row):
-            if cell.strip() in cdr._KNOWN_DISPO:
-                idx, dispo = i, cell.strip()
-                break
-        if idx is None:
-            continue  # header / malformed
-        col = lambda off, _row=row, _i=idx: _row[off] if 0 <= off < len(_row) else ""  # noqa: E731
-        emit_call_events({
-            "src": col(idx - 13), "dst": col(idx - 12), "start": col(idx - 5),
-            "answer": col(idx - 4), "end": col(idx - 3),
-            "duration": col(idx - 2), "billsec": col(idx - 1),
-            "disposition": dispo, "uniqueid": col(2), "userfield": col(3),
-        })
+    rows, _last_size = cdr.tail_new_rows(_last_size)
+    for call in rows:
+        emit_call_events(call)
 
 
 # ---------------------------------------------------------------- delivery
@@ -150,7 +117,7 @@ def _deliver_one(entry):
 def _loop():
     global _last_size, _ticks
     time.sleep(15)
-    _last_size = os.path.getsize(_cdr_path) if os.path.exists(_cdr_path) else 0
+    _last_size = cdr.current_size()
     while True:
         time.sleep(5)
         if not _tick_lock.acquire(blocking=False):
@@ -183,8 +150,7 @@ def start_once():
                 lock_fh.close()
                 return
             if _last_size is None:
-                _last_size = (os.path.getsize(_cdr_path)
-                              if os.path.exists(_cdr_path) else 0)
+                _last_size = cdr.current_size()
             threading.Thread(target=_loop, daemon=True,
                              name="ipbx-webhooks").start()
         except Exception:  # noqa: BLE001 — never break app startup

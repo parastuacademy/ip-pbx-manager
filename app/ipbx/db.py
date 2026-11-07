@@ -44,16 +44,12 @@ def init_db():
                    display_name TEXT NOT NULL DEFAULT '',
                    secret      TEXT NOT NULL,
                    record      INTEGER NOT NULL DEFAULT 0,
+                   voicemail   INTEGER NOT NULL DEFAULT 0,
                    mac         TEXT NOT NULL DEFAULT '',
                    model       TEXT NOT NULL DEFAULT 'generic',
                    created_at  TEXT DEFAULT (datetime('now','localtime'))
                )"""
         )
-        # v2 migration: per-extension voicemail flag
-        try:
-            c.execute("ALTER TABLE extensions ADD COLUMN voicemail INTEGER NOT NULL DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass  # column already exists
         c.execute(
             """CREATE TABLE IF NOT EXISTS ring_groups (
                    id       INTEGER PRIMARY KEY AUTOINCREMENT,

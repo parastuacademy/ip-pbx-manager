@@ -30,7 +30,7 @@ import time
 
 from flask import Blueprint, g, jsonify, request, send_file
 
-from . import cdr, config_gen, db, webhooks
+from . import VERSION, cdr, config_gen, db, webhooks
 from .ami import AMIClient, AMIError
 
 bp = Blueprint("api", __name__, url_prefix="/api/v1")
@@ -63,12 +63,9 @@ def _err(status, code, message, headers=None):
 
 
 def _body_json():
+    """Request body as a dict — the v1 API accepts JSON only."""
     data = request.get_json(silent=True)
-    if isinstance(data, dict):
-        return data
-    if request.form:  # tolerate form posts
-        return request.form.to_dict()
-    return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _ip_allowed(ip_allow, remote_ip):
@@ -143,7 +140,6 @@ def _auth():
 # -------------------------------------------------------------------- ping
 @bp.get("/ping")
 def ping():
-    from . import VERSION  # lazy — avoids a circular import at module load
     return _ok({"service": "ip-pbx-manager", "api": "v1", "version": VERSION})
 
 
@@ -200,9 +196,9 @@ def list_calls():
         offset = max(int(args.get("offset", "0")), 0)
     except ValueError:
         return _err(422, "invalid_input", "'limit' and 'offset' must be integers.")
-    if dispo and dispo not in cdr._KNOWN_DISPO:
+    if dispo and dispo not in cdr.DISPOSITIONS:
         return _err(422, "invalid_input",
-                    "'disposition' must be one of: " + ", ".join(sorted(cdr._KNOWN_DISPO)))
+                    "'disposition' must be one of: " + ", ".join(cdr.DISPOSITIONS))
     rows, total = cdr.read_cdr(q=q, date=date, disposition=dispo,
                                limit=limit, offset=offset)
     return _ok([_call_view(r) for r in rows],

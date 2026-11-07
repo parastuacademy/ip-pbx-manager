@@ -5,11 +5,11 @@ import time
 
 from flask import Flask, abort, redirect, request, session, url_for
 
-from . import db, notifier, webhooks
-from .api import bp as api_bp
-from .routes import bp
+VERSION = "2.1"  # above the blueprint imports — app/ipbx/api.py reads it at load time
 
-VERSION = "2.1"
+from . import db, notifier, webhooks  # noqa: E402
+from .api import bp as api_bp  # noqa: E402
+from .routes import bp  # noqa: E402
 
 EXEMPT_PATHS = ("/login", "/setup", "/health")
 

@@ -3,6 +3,7 @@
 Run from the repo root:
     python3 -m unittest discover -s tests -v
 """
+import csv
 import hashlib
 import hmac
 import json
@@ -398,18 +399,53 @@ class CdrReaderTests(Base):
 
     def setUp(self):
         super().setUp()
-        self._clear_recordings()  # tolerate leftovers from earlier runs
+        self._clear_recordings()
 
     def tearDown(self):
         self._clear_recordings()
         super().tearDown()
 
-    def test_find_recording_fallbacks(self):
+    def test_find_recording(self):
         self.assertIsNone(cdr.find_recording("123.45"))
         path = os.path.join(cdr.RECORDINGS_DIR, "123.45.wav")
         with open(path, "wb") as fh:
             fh.write(b"x")
         self.assertEqual(cdr.find_recording("123.45"), path)
+
+    def test_parse_row_fixed_layout(self):
+        # The parser trusts the one 18-column layout our cdr.conf writes;
+        # anything else (header line, short/long rows, junk) is skipped.
+        header = ("accountcode,src,dst,dcontext,clid,channel,dstchannel,"
+                  "lastapp,lastdata,start,answer,end,duration,billsec,"
+                  "disposition,amaflags,uniqueid,userfield")
+        self.assertIsNone(cdr.parse_row(next(csv.reader([header]))))
+        self.assertIsNone(cdr.parse_row(["x"] * 17))   # not our layout
+        self.assertIsNone(cdr.parse_row(["x"] * 19))
+        self.assertIsNone(cdr.parse_row([]))
+        call = cdr.parse_row(next(csv.reader([CDR_SAMPLE.splitlines()[0]])))
+        self.assertEqual(call["uniqueid"], "1762498800.1")
+        self.assertEqual(call["disposition"], "ANSWERED")
+        self.assertEqual(call["src"], "101")
+
+    def test_tail_new_rows_incremental(self):
+        header = ("accountcode,src,dst,dcontext,clid,channel,dstchannel,"
+                  "lastapp,lastdata,start,answer,end,duration,billsec,"
+                  "disposition,amaflags,uniqueid,userfield\n")
+        first, second = CDR_SAMPLE.splitlines()[0], CDR_SAMPLE.splitlines()[1]
+        os.makedirs(os.path.dirname(cdr.CDR_PATH), exist_ok=True)
+        with open(cdr.CDR_PATH, "w", encoding="utf-8") as fh:
+            fh.write(header)
+        rows, size = cdr.tail_new_rows(0)
+        self.assertEqual(rows, [])                       # header parsed away
+        with open(cdr.CDR_PATH, "a", encoding="utf-8") as fh:
+            fh.write(first + "\n" + second)              # second line incomplete
+        rows, size = cdr.tail_new_rows(size)
+        self.assertEqual([r["uniqueid"] for r in rows], ["1762498800.1"])
+        with open(cdr.CDR_PATH, "a", encoding="utf-8") as fh:
+            fh.write("\n")
+        rows, size = cdr.tail_new_rows(size)
+        self.assertEqual([r["uniqueid"] for r in rows], ["1762499200.2"])
+        self.assertEqual(cdr.tail_new_rows(size)[0], [])  # nothing new
 
 
 if __name__ == "__main__":
