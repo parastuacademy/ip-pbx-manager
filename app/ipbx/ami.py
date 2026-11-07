@@ -114,6 +114,28 @@ class AMIClient:
         return out.split("--END COMMAND--")[0].strip("\r\n")
 
     # ------------------------------------------------------------ operations
+    def originate(self, channel, context, exten, timeout=45, caller_id=None,
+                  variable=None):
+        """Place an outbound call leg (async) and connect it to a dialplan
+        context/exten when answered — used by the click-to-call API.
+
+        Returns True when Asterisk accepted the originate request."""
+        fields = {"Action": "Originate",
+                  "Channel": channel,
+                  "Context": context,
+                  "Exten": exten,
+                  "Priority": "1",
+                  "Timeout": str(int(timeout) * 1000),
+                  "Async": "true"}
+        if caller_id:
+            fields["CallerID"] = caller_id
+        if variable:
+            fields["Variable"] = variable
+        resp = self._send_action(fields)
+        if "Response: Success" not in resp:
+            raise AMIError(resp.strip()[:200])
+        return True
+
     def reload_all(self):
         self.command("pjsip reload")
         self.command("dialplan reload")

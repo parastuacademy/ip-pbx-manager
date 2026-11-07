@@ -1,0 +1,185 @@
+openapi: 3.0.3
+info:
+  title: ip-pbx-manager REST API
+  description: >
+    Persian IP PBX management panel — external REST API v1.
+    Click-to-call, call log, recordings, extension/trunk status and call-event
+    webhooks for CRM integration. Persian documentation: docs/API.md
+  version: "1.0"
+servers:
+  - url: http://{panel-host}:8080/api/v1
+    variables:
+      panel-host:
+        default: 192.168.1.10
+security:
+  - bearerKey: []
+paths:
+  /ping:
+    get:
+      summary: Service identity (no key required)
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkEnvelope" }
+  /calls/click-to-call:
+    post:
+      summary: Click-to-call — ring the agent, then connect the destination
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent, destination]
+              properties:
+                agent:
+                  type: string
+                  description: Existing internal extension that places the call
+                destination:
+                  type: string
+                  description: Existing extension or external number (3-20 digits)
+                timeout:
+                  type: integer
+                  minimum: 5
+                  maximum: 120
+                  default: 45
+      responses:
+        "202": { $ref: "#/components/responses/Ok" }
+        "422": { $ref: "#/components/responses/Invalid" }
+        "503": { $ref: "#/components/responses/ServerError" }
+  /calls:
+    get:
+      summary: Call log with filters and pagination (last 5000 calls)
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: substring on src/dst }
+        - { name: date, in: query, schema: { type: string }, description: "YYYY-MM-DD" }
+        - name: disposition
+          in: query
+          schema:
+            type: string
+            enum: [ANSWERED, NO ANSWER, BUSY, FAILED, CONGESTION]
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 1000 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /calls/{uniqueid}:
+    get:
+      summary: One call by uniqueid
+      parameters:
+        - { name: uniqueid, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /calls/{uniqueid}/recording:
+    get:
+      summary: Recording file of a call (audio/wav)
+      parameters:
+        - { name: uniqueid, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The recording file
+          content:
+            audio/wav:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /extensions:
+    get:
+      summary: Extensions with online status
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+  /trunk:
+    get:
+      summary: Trunk registration status
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+  /webhooks:
+    get:
+      summary: List registered webhooks
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+    post:
+      summary: Register a webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+                events:
+                  type: array
+                  items: { $ref: "#/components/schemas/WebhookEvent" }
+                  default: [call.ended, call.missed]
+                secret: { type: string, description: HMAC secret (auto-generated when empty) }
+                active: { type: boolean, default: true }
+      responses:
+        "201": { $ref: "#/components/responses/Ok" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /webhooks/{id}:
+    delete:
+      summary: Delete a webhook
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /webhooks/{id}/test:
+    post:
+      summary: Queue a webhook.test event for this webhook
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "404": { $ref: "#/components/responses/NotFound" }
+components:
+  securitySchemes:
+    bearerKey:
+      type: http
+      scheme: bearer
+      description: "API key (pbx_…) created in the panel's 'اتصال‌ها (API)' page"
+  responses:
+    Ok:
+      description: OK
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/OkEnvelope" }
+    Invalid:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ServerError:
+      description: Asterisk unreachable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    OkEnvelope:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        data: {}
+        meta: {}
+    ErrorEnvelope:
+      type: object
+      properties:
+        ok: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            code: { type: string, example: invalid_input }
+            message: { type: string }
+    WebhookEvent:
+      type: string
+      enum: [call.ended, call.answered, call.missed, webhook.test]

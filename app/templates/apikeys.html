@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}اتصال‌ها (API) — پنل تلفن آی‌پی{% endblock %}
+{% block body %}
+<h1>اتصال‌ها — REST API و وب‌هوک</h1>
+<p class="hint">از این بخش، نرم‌افزارهای دیگر (مثل CRM، نوبت‌دهی یا سیستم پشتیبانی) به سانترال وصل می‌شوند: می‌توانند از داخل خودشان تماس برقرار کنند، گزارش تماس‌ها را بخوانند و ضبط مکالمه را بگیرند. مستندات کامل و نمونه‌کدها: <span class="mono">docs/API.md</span></p>
+
+<div class="cards">
+  <div class="card"><div class="big mono" style="font-size:15px">{{ base_url }}</div><div class="hint">آدرس پایه API — نسخه v1</div></div>
+  <div class="card"><div class="big">{{ rate }}</div><div class="hint">محدودیت نرخ هر کلید</div></div>
+  <div class="card"><div class="big">{{ queue_depth }}</div><div class="hint">رویداد در صف ارسال وب‌هوک</div></div>
+</div>
+
+<details class="card" open>
+  <summary>🔑 کلیدهای API — افزودن کلید</summary>
+  <form method="post" action="{{ url_for('main.apikeys_page') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="create_key">
+    <div class="grid-2">
+      <div>
+        <label>نام کلید (برای چه نرم‌افزاری است؟)</label>
+        <input type="text" name="name" placeholder="CRM فروشگاه">
+      </div>
+      <div>
+        <label>محدودکردن به IP خاص (اختیاری — با کاما جدا کنید)</label>
+        <input type="text" name="ip_allow" dir="ltr" placeholder="192.168.1.10, 10.0.0.0/24">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">ساخت کلید</button>
+  </form>
+</details>
+
+<div class="card">
+  {% if keys %}
+  <table>
+    <thead><tr><th>نام</th><th>کلید</th><th>محدود IP</th><th>ساخته‌شده</th><th>آخرین استفاده</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+    <tbody>
+      {% for k in keys %}
+      <tr>
+        <td>{{ k.name }}</td>
+        <td class="mono">{{ k.prefix }}…</td>
+        <td class="mono">{{ k.ip_allow or 'هر IP' }}</td>
+        <td>{{ k.created_at }}</td>
+        <td>{{ k.last_used or '—' }}</td>
+        <td>{% if k.revoked %}<span class="badge badge-bad">باطل‌شده</span>{% else %}<span class="badge badge-ok">فعال</span>{% endif %}</td>
+        <td class="actions">
+          {% if not k.revoked %}
+          <form method="post" action="{{ url_for('main.apikeys_page') }}" class="inline"
+                onsubmit="return confirm('کلید «{{ k.name }}» باطل شود؟ نرم‌افزار متصل دیگر کار نمی‌کند.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="revoke_key">
+            <input type="hidden" name="id" value="{{ k.id }}">
+            <button type="submit" class="btn btn-small btn-danger">بطلان</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('main.apikeys_page') }}" class="inline"
+                onsubmit="return confirm('از فهرست حذف شود؟');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="delete_key">
+            <input type="hidden" name="id" value="{{ k.id }}">
+            <button type="submit" class="btn btn-small btn-ghost">حذف</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">هنوز کلیدی ساخته نشده است. برای وصل‌کردن CRM یا هر نرم‌افزار دیگر، یک کلید بسازید و در همان نرم‌افزار ذخیره کنید.</p>
+  {% endif %}
+</div>
+
+<details class="card" {% if not hooks %}open{% endif %}>
+  <summary>🔔 وب‌هوک‌ها — افزودن وب‌هوک</summary>
+  <p class="hint">وب‌هوک یعنی: به‌محض پایان هر تماس، اطلاعات تماس به‌صورت خودکار به آدرس نرم‌افزار شما POST می‌شود (مثلاً برای پاپ‌آپ پرونده مشتری یا پیگیری تماس‌های از دست‌رفته). امضای HMAC-SHA256 در هدر <span class="mono">X-PBX-Signature</span> ارسال می‌شود.</p>
+  <form method="post" action="{{ url_for('main.apikeys_page') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="create_webhook">
+    <div class="grid-2">
+      <div class="full">
+        <label>آدرس دریافت (URL) در نرم‌افزار شما</label>
+        <input type="text" name="url" dir="ltr" placeholder="https://crm.example.com/hooks/pbx">
+      </div>
+      <div class="full">
+        <label>رمز امضا (اختیاری — اگر خالی بماند خودکار ساخته می‌شود)</label>
+        <input type="text" name="secret" dir="ltr" placeholder="whsec_…">
+      </div>
+      <div class="full">
+        <label>چه رخدادهایی ارسال شود؟</label>
+        <div class="checks">
+          {% for e, lbl in [('call.ended','پایان هر تماس'), ('call.missed','تماس بی‌پاسخ'), ('call.answered','تماس پاسخ‌داده'), ('webhook.test','آزمایشی')] %}
+          <label class="check"><input type="checkbox" name="events" value="{{ e }}" {{ 'checked' if e in ('call.ended', 'call.missed') else '' }}> {{ lbl }} <span class="mono hint">({{ e }})</span></label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">ثبت وب‌هوک</button>
+  </form>
+</details>
+
+<div class="card">
+  {% if hooks %}
+  <table>
+    <thead><tr><th>آدرس</th><th>رخدادها</th><th>وضعیت</th><th>آخرین ارسال</th><th>عملیات</th></tr></thead>
+    <tbody>
+      {% for w in hooks %}
+      <tr>
+        <td class="mono">{{ w.url }}</td>
+        <td class="mono">{{ w.events }}</td>
+        <td>{% if w.active %}<span class="badge badge-ok">فعال</span>{% else %}<span class="badge">خاموش</span>{% endif %}</td>
+        <td>{{ w.last_status or '—' }}</td>
+        <td class="actions">
+          <form method="post" action="{{ url_for('main.apikeys_page') }}" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="test_webhook">
+            <input type="hidden" name="id" value="{{ w.id }}">
+            <button type="submit" class="btn btn-small btn-ghost">ارسال آزمایشی</button>
+          </form>
+          <form method="post" action="{{ url_for('main.apikeys_page') }}" class="inline"
+                onsubmit="return confirm('این وب‌هوک حذف شود؟');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="delete_webhook">
+            <input type="hidden" name="id" value="{{ w.id }}">
+            <button type="submit" class="btn btn-small btn-danger">حذف</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">هنوز وب‌هوکی ثبت نشده است.</p>
+  {% endif %}
+</div>
+
+<details class="card">
+  <summary>🚀 راهنمای سریع برای برنامه‌نویس نرم‌افزار مقصد</summary>
+  <p>تمام درخواست‌ها با هدر <span class="mono">Authorization: Bearer &lt;کلید&gt;</span> فرستاده می‌شوند. نمونه تماس از داخل CRM:</p>
+<pre class="mono" style="background:#f0fdfa;border:1px dashed var(--brand);border-radius:10px;padding:12px;overflow:auto">curl -s {{ base_url }}/calls/click-to-call \
+  -H "Authorization: Bearer pbx_XXXXXXXXXXXX..." \
+  -H "Content-Type: application/json" \
+  -d '{"agent": "101", "destination": "09121234567"}'</pre>
+  <p>نمونه اعتبارسنجی امضای وب‌هوک (پایتون):</p>
+<pre class="mono" style="background:#f0fdfa;border:1px dashed var(--brand);border-radius:10px;padding:12px;overflow:auto">import hmac, hashlib
+expected = hmac.new(secret.encode(), request_body, hashlib.sha256).hexdigest()
+# request.headers["X-PBX-Signature"] == "sha256=" + expected ?</pre>
+  <p class="hint">مستندات کامل با مثال PHP و پایتون: فایل <span class="mono">docs/API.md</span> مخزن پروژه.</p>
+</details>
+{% endblock %}

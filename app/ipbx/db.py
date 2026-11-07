@@ -4,11 +4,13 @@ All persistent panel state lives in one SQLite file inside the shared
 /data volume, so both containers (panel + asterisk) and container rebuilds
 keep the data intact. Only the panel writes to the database.
 """
+import hashlib
 import os
 import re
 import secrets
 import sqlite3
 import string
+import time
 
 DATA_DIR = os.environ.get("IPBX_DATA_DIR", "/data")
 DB_PATH = os.path.join(DATA_DIR, "ipbx.db")
@@ -83,6 +85,43 @@ def init_db():
                    ts        TEXT DEFAULT (datetime('now','localtime')),
                    event     TEXT NOT NULL,
                    detail    TEXT NOT NULL DEFAULT ''
+               )"""
+        )
+        # v2.1: external REST API — keys + webhooks + delivery queue
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS api_keys (
+                   id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                   name      TEXT NOT NULL,
+                   key_hash  TEXT NOT NULL UNIQUE,
+                   prefix    TEXT NOT NULL,
+                   ip_allow  TEXT NOT NULL DEFAULT '',
+                   created_at TEXT DEFAULT (datetime('now','localtime')),
+                   last_used TEXT NOT NULL DEFAULT '',
+                   revoked   INTEGER NOT NULL DEFAULT 0
+               )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS webhooks (
+                   id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                   url        TEXT NOT NULL,
+                   events     TEXT NOT NULL DEFAULT 'call.ended,call.missed',
+                   secret     TEXT NOT NULL DEFAULT '',
+                   active     INTEGER NOT NULL DEFAULT 1,
+                   created_at TEXT DEFAULT (datetime('now','localtime')),
+                   last_status TEXT NOT NULL DEFAULT ''
+               )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS webhook_queue (
+                   id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                   webhook_id INTEGER NOT NULL,
+                   event      TEXT NOT NULL,
+                   payload    TEXT NOT NULL,
+                   attempts   INTEGER NOT NULL DEFAULT 0,
+                   next_try   REAL NOT NULL,
+                   last_error TEXT NOT NULL DEFAULT '',
+                   created_at TEXT DEFAULT (datetime('now','localtime')),
+                   done       INTEGER NOT NULL DEFAULT 0
                )"""
         )
         for key, value in (("admin_hash", ""), ("viewer_hash", ""), ("wizard_done", "0"),
@@ -324,3 +363,158 @@ def destination_choices():
     out += [(f"rg:{g['id']}", f"گروه زنگ: {g['name']}") for g in list_ring_groups()]
     out += [("vm:main", "صندوق پیام صوتی اصلی")]
     return out
+
+
+# ----------------------------------------------------------------- API keys
+KEY_PREFIX = "pbx_"
+
+def gen_api_key():
+    return KEY_PREFIX + secrets.token_hex(16)
+
+
+def _hash_key(raw_key):
+    return hashlib.sha256(raw_key.encode()).hexdigest()
+
+
+def create_api_key(name, ip_allow=""):
+    """Create a key; returns (row_id, raw_key). raw_key is shown only once."""
+    raw = gen_api_key()
+    with _conn() as c:
+        cur = c.execute(
+            "INSERT INTO api_keys(name, key_hash, prefix, ip_allow) VALUES (?, ?, ?, ?)",
+            (name[:60], _hash_key(raw), raw[:12], (ip_allow or "").strip()),
+        )
+        return cur.lastrowid, raw
+
+
+def list_api_keys(include_revoked=True):
+    q = "SELECT id, name, prefix, ip_allow, created_at, last_used, revoked " \
+        "FROM api_keys"
+    if not include_revoked:
+        q += " WHERE revoked = 0"
+    q += " ORDER BY id DESC"
+    with _conn() as c:
+        rows = c.execute(q).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def revoke_api_key(key_id):
+    with _conn() as c:
+        c.execute("UPDATE api_keys SET revoked = 1 WHERE id = ?", (key_id,))
+
+
+def delete_api_key(key_id):
+    with _conn() as c:
+        c.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
+
+
+def get_api_key_by_secret(raw_key):
+    """Full row (incl. id/ip_allow) for a raw bearer key, or None."""
+    if not raw_key:
+        return None
+    with _conn() as c:
+        row = c.execute("SELECT * FROM api_keys WHERE key_hash = ? AND revoked = 0",
+                        (_hash_key(raw_key),)).fetchone()
+    return _row_to_dict(row)
+
+
+def touch_api_key(key_id):
+    with _conn() as c:
+        c.execute("UPDATE api_keys SET last_used = datetime('now','localtime') "
+                  "WHERE id = ?", (key_id,))
+
+
+# ----------------------------------------------------------------- webhooks
+WEBHOOK_EVENTS = ("call.ended", "call.missed", "call.answered", "webhook.test")
+
+
+def gen_webhook_secret():
+    return "whsec_" + secrets.token_hex(16)
+
+
+def create_webhook(url, events, secret="", active=1):
+    with _conn() as c:
+        cur = c.execute(
+            "INSERT INTO webhooks(url, events, secret, active) VALUES (?, ?, ?, ?)",
+            (url[:500], ",".join(events), secret, int(active)),
+        )
+        return cur.lastrowid
+
+
+def list_webhooks():
+    with _conn() as c:
+        rows = c.execute("SELECT * FROM webhooks ORDER BY id DESC").fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_webhook(webhook_id):
+    with _conn() as c:
+        return _row_to_dict(
+            c.execute("SELECT * FROM webhooks WHERE id = ?", (webhook_id,)).fetchone())
+
+
+def set_webhook_active(webhook_id, active):
+    with _conn() as c:
+        c.execute("UPDATE webhooks SET active = ? WHERE id = ?",
+                  (int(active), webhook_id))
+
+
+def delete_webhook(webhook_id):
+    with _conn() as c:
+        c.execute("DELETE FROM webhooks WHERE id = ?", (webhook_id,))
+        c.execute("DELETE FROM webhook_queue WHERE webhook_id = ?", (webhook_id,))
+
+
+def set_webhook_last_status(webhook_id, status):
+    with _conn() as c:
+        c.execute("UPDATE webhooks SET last_status = ? WHERE id = ?",
+                  (status[:160], webhook_id))
+
+
+# --------------------------------------------------------------- webhook queue
+def enqueue_webhook(webhook_id, event, payload, now):
+    """Queue one delivery attempt. payload must be the JSON string body."""
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO webhook_queue(webhook_id, event, payload, next_try) "
+            "VALUES (?, ?, ?, ?)", (webhook_id, event, payload, now))
+
+
+def due_webhook_deliveries(now, limit=20):
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM webhook_queue WHERE done = 0 AND next_try <= ? "
+            "ORDER BY id LIMIT ?", (now, limit)).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def finish_webhook_delivery(qid, ok, error="", retry_in=0, now=None):
+    """Mark a delivery finished, or schedule the next retry."""
+    now = time.time() if now is None else now
+    with _conn() as c:
+        row = c.execute("SELECT attempts FROM webhook_queue WHERE id = ?",
+                        (qid,)).fetchone()
+        if row is None:
+            return
+        attempts = int(row["attempts"]) + 1
+        if ok or attempts >= 4:
+            c.execute("UPDATE webhook_queue SET done = 1, attempts = ?, "
+                      "last_error = ? WHERE id = ?",
+                      (attempts, error[:300], qid))
+        else:
+            c.execute("UPDATE webhook_queue SET attempts = ?, next_try = ?, "
+                      "last_error = ? WHERE id = ?",
+                      (attempts, now + retry_in, error[:300], qid))
+
+
+def prune_webhook_queue(keep_done=500):
+    with _conn() as c:
+        c.execute("DELETE FROM webhook_queue WHERE done = 1 AND id NOT IN "
+                  "(SELECT id FROM webhook_queue WHERE done = 1 "
+                  "ORDER BY id DESC LIMIT ?)", (keep_done,))
+
+
+def queue_depth():
+    with _conn() as c:
+        row = c.execute("SELECT COUNT(*) AS n FROM webhook_queue WHERE done = 0").fetchone()
+    return int(row["n"])

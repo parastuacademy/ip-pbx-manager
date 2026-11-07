@@ -8,19 +8,18 @@ import os
 import secrets
 import tarfile
 import time
-from collections import deque
 
 from flask import (Blueprint, abort, flash, jsonify, make_response, redirect,
                    render_template, request, send_file, send_from_directory,
                    session, url_for)
 
 from . import config_gen, db, notifier, provisioning
+from . import cdr
 from .ami import AMIClient, AMIError
 
 bp = Blueprint("main", __name__)
 
-RECORDINGS_DIR = os.path.join(db.DATA_DIR, "recordings")
-CDR_PATH = os.path.join(db.DATA_DIR, "log", "cdr-csv", "Master.csv")
+RECORDINGS_DIR = cdr.RECORDINGS_DIR
 VM_SPOOL = config_gen.VM_SPOOL
 SOUNDS_CUSTOM = config_gen.SOUNDS_CUSTOM
 
@@ -87,48 +86,6 @@ def _status_snapshot():
     except AMIError:
         pass
     return data
-
-
-_KNOWN_DISPO = {"ANSWERED", "NO ANSWER", "BUSY", "FAILED", "CONGESTION"}
-
-
-def _read_cdr(q="", date="", limit=400):
-    """Parse Asterisk cdr-csv Master.csv.
-
-    Column position is detected from the disposition field so both the
-    standard 18-column layout (with accountcode) and the 17-column one work:
-    start = dispo-5, answer = dispo-4, end = dispo-3, duration = dispo-2,
-    billsec = dispo-1, src = dispo-13, dst = dispo-12, uniqueid = dispo+2.
-    """
-    if not os.path.exists(CDR_PATH):
-        return []
-    with open(CDR_PATH, newline="", encoding="utf-8", errors="replace") as fh:
-        lines = deque(fh, maxlen=5000)
-    rows = []
-    for row in csv.reader(lines):
-        dispo_idx = None
-        dispo = ""
-        for i in range(len(row)):
-            if row[i].strip() in _KNOWN_DISPO:
-                dispo_idx, dispo = i, row[i].strip()
-                break
-        if dispo_idx is None or dispo_idx < 13:
-            continue  # header / malformed line
-        def col(offset):
-            i = dispo_idx + offset
-            return row[i] if 0 <= i < len(row) else ""
-        src, dst, start = col(-13), col(-12), col(-5)
-        if q and q not in src and q not in dst:
-            continue
-        if date and not start.startswith(date):
-            continue
-        rows.append({
-            "src": src, "dst": dst, "start": start,
-            "answer": col(-4), "end": col(-3),
-            "duration": col(-2), "billsec": col(-1),
-            "disposition": dispo, "uniqueid": col(2),
-        })
-    return rows[-limit:][::-1]
 
 
 # -------------------------------------------------------------------- system
@@ -214,7 +171,7 @@ def dashboard():
     if db.get_setting("wizard_done") != "1":
         return redirect(url_for("main.wizard"))
     return render_template("dashboard.html", exts=db.list_extensions(),
-                           rows=_read_cdr(limit=8))
+                           rows=cdr.read_cdr(limit=8)[0])
 
 
 @bp.get("/api/status")
@@ -410,7 +367,7 @@ def cdr_page():
     q = request.args.get("q", "").strip()
     date = request.args.get("date", "").strip()
     missed = request.args.get("missed") == "1"
-    rows = _read_cdr(q=q, date=date)
+    rows = cdr.read_cdr(q=q, date=date)[0]
     if missed:
         rows = [r for r in rows if r["disposition"] != "ANSWERED"]
     return render_template("cdr.html", rows=rows, q=q, date=date, missed=missed)
@@ -422,7 +379,7 @@ def cdr_export():
     q = request.args.get("q", "").strip()
     date = request.args.get("date", "").strip()
     missed = request.args.get("missed") == "1"
-    rows = _read_cdr(q=q, date=date, limit=5000)
+    rows = cdr.read_cdr(q=q, date=date, limit=5000)[0]
     if missed:
         rows = [r for r in rows if r["disposition"] != "ANSWERED"]
     from .jalali import jalali_datetime
@@ -761,6 +718,76 @@ def extension_qr(ext):
     return render_template("qr.html", e=e, svg=svg,
                            url=f"http://{request.host}/provisioning/",
                            sip=f"sip:{e['ext']}@{server_ip}")
+
+
+# ---------------------------------------------------------- integrations (API)
+@bp.route("/apikeys", methods=["GET", "POST"])
+def apikeys_page():
+    """Panel page for API keys + webhooks (external integrations)."""
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "create_key":
+            name = request.form.get("name", "").strip()[:60]
+            ip_allow = request.form.get("ip_allow", "").strip()
+            if not name:
+                flash("برای کلید یک نام بگذارید (مثلاً: CRM فروشگاه).", "error")
+            else:
+                _, raw = db.create_api_key(name, ip_allow=ip_allow)
+                flash(f"کلید API ساخته شد ✅ فقط همین الان نمایش داده می‌شود — کپی کنید: {raw}", "ok")
+                flash("این کلید را در نرم‌افزار مقصد (CRM و…) به‌عنوان Bearer Token ذخیره کنید.", "info")
+        elif action == "revoke_key":
+            kid = request.form.get("id", "").strip()
+            if kid.isdigit():
+                db.revoke_api_key(int(kid))
+                db.log_event("api_key_revoke", f"key id {kid}")
+                flash("کلید باطل شد — نرم‌افزارهایی که از آن استفاده می‌کنند دیگر دسترسی ندارند.", "ok")
+        elif action == "delete_key":
+            kid = request.form.get("id", "").strip()
+            if kid.isdigit():
+                db.delete_api_key(int(kid))
+                flash("کلید از فهرست حذف شد.", "ok")
+        elif action == "create_webhook":
+            url = request.form.get("url", "").strip()
+            events = request.form.getlist("events")
+            events = [e for e in events if e in db.WEBHOOK_EVENTS]
+            secret = request.form.get("secret", "").strip()
+            if not url.startswith(("http://", "https://")):
+                flash("آدرس وب‌هوک باید با http:// یا https:// شروع شود.", "error")
+            elif not events:
+                flash("حداقل یک رخداد را انتخاب کنید.", "error")
+            else:
+                wid = db.create_webhook(url, events,
+                                        secret=secret or db.gen_webhook_secret())
+                flash("وب‌هوک ثبت شد ✅", "ok")
+                if not secret:
+                    flash(f"رمز امضای این وب‌هوک (برای اعتبارسنجی در سمت شما): {db.get_webhook(wid)['secret']}", "info")
+        elif action == "delete_webhook":
+            wid = request.form.get("id", "").strip()
+            if wid.isdigit():
+                db.delete_webhook(int(wid))
+                flash("وب‌هوک حذف شد.", "ok")
+        elif action == "test_webhook":
+            wid = request.form.get("id", "").strip()
+            if wid.isdigit() and db.get_webhook(int(wid)):
+                from . import webhooks as _wh
+                _wh.emit_event("webhook.test",
+                               {"note": "test delivery from panel",
+                                "webhook_id": int(wid)}, webhook_id=int(wid))
+                flash("رویداد آزمایشی در صف ارسال قرار گرفت؛ چند ثانیه بعد «آخرین وضعیت» را ببینید.", "ok")
+            else:
+                flash("وب‌هوک یافت نشد.", "error")
+        return redirect(url_for("main.apikeys_page"))
+
+    from .api import RATE_LIMIT, RATE_WINDOW
+    return render_template(
+        "apikeys.html",
+        keys=db.list_api_keys(),
+        hooks=db.list_webhooks(),
+        events=db.WEBHOOK_EVENTS,
+        base_url=request.host_url.rstrip("/") + "/api/v1",
+        rate=f"{RATE_LIMIT} درخواست در {RATE_WINDOW} ثانیه برای هر کلید",
+        queue_depth=db.queue_depth(),
+    )
 
 
 # ---------------------------------------------------------- backup/restore

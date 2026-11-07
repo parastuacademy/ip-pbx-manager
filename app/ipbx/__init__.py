@@ -5,8 +5,11 @@ import time
 
 from flask import Flask, abort, redirect, request, session, url_for
 
-from . import db, notifier
+from . import db, notifier, webhooks
+from .api import bp as api_bp
 from .routes import bp
+
+VERSION = "2.1"
 
 EXEMPT_PATHS = ("/login", "/setup", "/health")
 
@@ -52,7 +55,9 @@ def create_app():
 
     db.init_db()
     app.register_blueprint(bp)
+    app.register_blueprint(api_bp)
     notifier.start_once()
+    webhooks.start_once()
 
     @app.context_processor
     def _inject_csrf():
@@ -83,6 +88,7 @@ def create_app():
             path in EXEMPT_PATHS
             or path.startswith("/static/")
             or path.startswith("/provisioning/")
+            or path.startswith("/api/v1/")  # external API: key-authenticated
             or path == "/favicon.ico"
         ):
             return None

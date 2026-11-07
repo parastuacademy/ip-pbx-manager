@@ -25,6 +25,7 @@
       {% if is_admin() %}
       <a href="{{ url_for('main.recordings') }}" class="{{ 'active' if request.path.startswith('/recordings') else '' }}">ضبط‌ها</a>
       <a href="{{ url_for('main.voicemail_page') }}" class="{{ 'active' if request.path.startswith('/voicemail') else '' }}">پیام‌های صوتی</a>
+      <a href="{{ url_for('main.apikeys_page') }}" class="{{ 'active' if request.path.startswith('/apikeys') else '' }}">اتصال‌ها (API)</a>
       <a href="{{ url_for('main.settings_page') }}" class="{{ 'active' if request.path.startswith('/settings') else '' }}">تنظیمات</a>
       {% endif %}
     </nav>
